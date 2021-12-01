@@ -11,44 +11,31 @@ Token :: struct {
 	grp:    u32,
 	mingrp: u32,  /* Intending to get rid of this */
 	type:   Token_Type,
+	done:   bool,
 }
 
 Token_Type :: enum {
+	/* Not Keywords */
 	Query_Begin,    /* All parsing begins here... */
 	Query_End,      /*    ... and ends here       */
-	Query_Name,
+	Query_Comment,
+	Query_Name = 20,
 	Query_Variable,
 	Literal_Int,
 	Literal_Float,
 	Literal_String,
 
+	/* Special un-mapped tokens */
+	Sym_Asterisk = 50,  /* was Sym_Multiply */
+	Sym_Plus_Unary,     /* was Sym_Plus */
+	Sym_Minus_Unary,    /* was Sym_Minus */
+	End_Of_Subquery,    /* was Sym_Rparen */
+
 	/* Keywords */
-	Abs,
-	Ascii,
-	Ceiling,
-	Char,
-	Charindex,
-	Datalength,
-	Day,
-	Floor,
-	Isdate,
-	Isnumeric,
-	Len,
-	Lower,
-	Ltrim,
+	Day = 100,
 	Month,
-	Nchar,
-	Patindex,
-	Rand,
-	Replace,
-	Round,
-	Rtrim,
 	Sign,
-	Space,
 	Str,
-	Substring,
-	Upper,
-	User_Name,
 	Year,
 	Text,
 	Ntext,
@@ -63,10 +50,8 @@ Token_Type :: enum {
 	Break,
 	By,
 	Case,
-	Coalesce,
 	Column,
 	Continue,
-	Convert,
 	Create,
 	Cross,
 	Declare,
@@ -92,11 +77,9 @@ Token_Type :: enum {
 	Into,
 	Is,
 	Join,
-	Left,
 	Like,
 	Not,
 	Null,
-	Nullif,
 	Of,
 	Off,
 	On,
@@ -112,7 +95,6 @@ Token_Type :: enum {
 	Replication,
 	Return,
 	Revert,
-	Right,
 	Rollback,
 	Save,
 	Schema,
@@ -132,52 +114,85 @@ Token_Type :: enum {
 	When,
 	Where,
 	While,
-	Avg,
 	Bigint,
-	Cast,
-	Try_Cast,
 	Checksum,
-	Checksum_Agg,
-	Concat,
-	Count,
-	Dateadd,
-	Datediff,
-	Datename,
-	Datepart,
 	Days,
-	Dense_Rank,
-	Getdate,
-	Getutcdate,
 	Go,
 	Hash,
 	Hours,
 	Int,
-	Max,
-	Min,
 	Minutes,
 	Range,
-	Rank,
 	Row,
-	Row_Number,
 	Rows,
 	Seconds,
 	Smallint,
 	Static,
 	Statusonly,
-	Stdev,
-	Stdevp,
-	String_Agg,
-	Stuff,
-	Sum,
 	Tinyint,
 	Wait,
 	Waitfor,
-	Isnull,
 	Varchar,
 	Nvarchar,
 
+	/* Windowed Functions */
+	Dense_Rank = 300,
+	Rank,
+	Row_Number,
+
+	/* Aggregate Functions */
+	Avg = 400,
+	Checksum_Agg,
+	Count,
+	Max,
+	Min,
+	Stdev,
+	Stdevp,
+	String_Agg,
+	Sum,
+
+	/* Scalar Functions */
+	Abs = 500,
+	Ascii,
+	Cast,
+	Ceiling,
+	Char,
+	Charindex,
+	Coalesce,
+	Concat,
+	Convert,
+	Datalength,
+	Dateadd,
+	Datediff,
+	Datename,
+	Datepart,
+	Floor,
+	Getdate,
+	Getutcdate,
+	Isdate,
+	Isnull,
+	Isnumeric,
+	Left,
+	Len,
+	Lower,
+	Ltrim,
+	Nchar,
+	Nullif,
+	Patindex,
+	Rand,
+	Replace,
+	Right,
+	Round,
+	Rtrim,
+	Space,
+	Stuff,
+	Substring,
+	Try_Cast,
+	Upper,
+	User_Name,
+
 	/* symbols */
-	Sym_Pound,
+	Sym_Pound = 600,
 	Sym_Lparen,
 	Sym_Rparen,
 	Sym_Plus_Assign,
@@ -209,12 +224,6 @@ Token_Type :: enum {
 	Sym_Semicolon,
 	Sym_Block_Comment,
 	Sym_Line_Comment,
-
-	/* Special un-mapped tokens */
-	End_Of_Subquery, /* was Sym_Rparen */
-	Sym_Asterisk,    /* was Sym_Multiply */
-	Sym_Plus_Unary,  /* was Sym_Plus */
-	Sym_Minus_Unary, /* was Sym_Minus */
 }
 
 @(private)
@@ -410,6 +419,8 @@ _init_map :: proc(self: ^Sql_Parser) {
 	_insert_into_map(self, ";",  .Sym_Semicolon)
 	_insert_into_map(self, "/*", .Sym_Block_Comment)
 	_insert_into_map(self, "--", .Sym_Line_Comment)
+
+	//fmt.fprintf(os.stderr, "mapsize: %d\n", len(self.tok_map))
 }
 
 lex_lex :: proc (self: ^Sql_Parser) {
@@ -421,14 +432,16 @@ lex_lex :: proc (self: ^Sql_Parser) {
 
 }
 
-lex_error :: proc(self: ^Sql_Parser, idx: u32) -> Sql_Return {
+lex_error :: proc(self: ^Sql_Parser, idx: u32) -> Sql_Result {
+	line, off := parse_get_pos(self, idx)
+	fmt.fprintf(os.stderr, "Lexer error (line: %d, pos: %d)\n", line, off)
 	return .Error
 }
 
 @(private)
 _skip_whitespace :: proc(self: ^Sql_Parser, idx: ^u32)
 {
-	for ; idx^ < cast(u32)len(self.q) && unicode.is_space(cast(rune)self.q[idx^]); idx^ += 1 {
+	for ; idx^ < u32(len(self.q)) && unicode.is_space(rune(self.q[idx^])); idx^ += 1 {
 		if self.q[idx^] == '\n' {
 			append(&self.lf_vec, idx^)
 		}
@@ -439,25 +452,25 @@ _skip_whitespace :: proc(self: ^Sql_Parser, idx: ^u32)
 _get_name :: proc(self: ^Sql_Parser, group: int, idx: ^u32) {
 	begin := idx^
 	for ; self.q[idx^] == '_' ||
-	      unicode.is_digit(cast(rune)self.q[idx^]) ||
-	      unicode.is_alpha(cast(rune)self.q[idx^]); idx^ += 1 {}
+	      unicode.is_digit(rune(self.q[idx^])) ||
+	      unicode.is_alpha(rune(self.q[idx^])); idx^ += 1 {}
 
 	type, ok := self.tok_map[self.q[begin:idx^]]
 	if !ok {
 		type = .Query_Name
 	}
 
-	append(&self.tok_vec, Token {
+	append(&self.tokens, Token {
 		    type=type,
-		    grp=cast(u32)group,
+		    grp=u32(group),
 		    begin=begin,
 		    len=idx^-begin })
 }
 
 @(private)
-_get_qualified_name :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Return {
+_get_qualified_name :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Result {
 	real_begin := idx^ + 1
-	for ; self.q[idx^] != ']' && idx^ < cast(u32)len(self.q); idx^ += 1 {}
+	for ; self.q[idx^] != ']' && idx^ < u32(len(self.q)); idx^ += 1 {}
 
 	if self.q[idx^] != ']' {
 		return lex_error(self, idx^)
@@ -470,9 +483,9 @@ _get_qualified_name :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Ret
 		real_end = real_begin
 	}
 
-	append(&self.tok_vec, Token {
+	append(&self.tokens, Token {
 		    type = .Query_Name,
-		    grp=cast(u32)group,
+		    grp=u32(group),
 		    begin = real_begin,
 		    len = real_end-real_begin })
 
@@ -480,14 +493,14 @@ _get_qualified_name :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Ret
 }
 
 @(private)
-_get_numeric :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Return {
+_get_numeric :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Result {
 	/* TODO hex check here ? */
 
 	begin := idx^
 	is_float: bool
 
-	for ; idx^ < cast(u32)len(self.q) &&
-	    (unicode.is_digit(cast(rune)self.q[idx^]) || self.q[idx^] == '.'); idx^ += 1 {
+	for ; idx^ < u32(len(self.q)) &&
+	    (unicode.is_digit(rune(self.q[idx^])) || self.q[idx^] == '.'); idx^ += 1 {
 		if self.q[idx^] == '.' {
 			if is_float {
 				return lex_error(self, idx^)
@@ -501,9 +514,9 @@ _get_numeric :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Return {
 		type = .Literal_Float
 	}
 
-	append(&self.tok_vec, Token {
+	append(&self.tokens, Token {
 		    type=type,
-		    grp=cast(u32)group,
+		    grp=u32(group),
 		    begin=begin,
 		    len=idx^-begin })
 
@@ -516,39 +529,39 @@ _get_variable :: proc(self: ^Sql_Parser, group: int, idx: ^u32) {
 	idx^ += 1
 
 	for ; self.q[idx^] == '_' ||
-	      unicode.is_digit(cast(rune)self.q[idx^]) ||
-	      unicode.is_alpha(cast(rune)self.q[idx^]); idx^ += 1 {
+	      unicode.is_digit(rune(self.q[idx^])) ||
+	      unicode.is_alpha(rune(self.q[idx^])); idx^ += 1 {
 	}
 
-	append(&self.tok_vec, Token {
+	append(&self.tokens, Token {
 		    type=.Query_Variable,
-		    grp=cast(u32)group,
+		    grp=u32(group),
 		    begin=begin,
 		    len=idx^-begin })
 }
 
 @(private)
-_get_block_comment :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Return {
+_get_block_comment :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Result {
 	
 	begin := idx^
 
-	for ; idx^+1 < cast(u32)len(self.q) && 
+	for ; idx^+1 < u32(len(self.q)) && 
 	    !(self.q[idx^] == '*' && self.q[idx^+1] == '/'); idx^ += 1 {
 		if self.q[idx^] == '\n' {
 			append(&self.lf_vec, idx^)
 		}
 	}
 
-	if idx^+1 >= cast(u32)len(self.q) {
+	if idx^+1 >= u32(len(self.q)) {
 		fmt.fprintf(os.stderr, "unmatched `/*'\n")
 		return lex_error(self, idx^)
 	}
 
 	idx^ += 2
 
-	append(&self.tok_vec, Token {
-		    type=.Sym_Block_Comment,
-		    grp=cast(u32)group,
+	append(&self.tokens, Token {
+		    type=.Query_Comment,
+		    grp=u32(group),
 		    begin=begin,
 		    len=idx^-begin })
 
@@ -556,20 +569,20 @@ _get_block_comment :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Retu
 }
 
 @(private)
-_get_line_comment :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Return {
+_get_line_comment :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Result {
 	begin := idx^
 	offset := strings.index_byte(self.q[idx^:], '\n')
 	if offset == -1 {
-		idx^ = cast(u32)len(self.q)
+		idx^ = u32(len(self.q))
 	} else {
-		idx^ += cast(u32)offset
+		idx^ += u32(offset)
 		append(&self.lf_vec, idx^)
 		idx^ += 1
 	}
 
-	append(&self.tok_vec, Token {
-		    type=.Sym_Line_Comment,
-		    grp=cast(u32)group,
+	append(&self.tokens, Token {
+		    type=.Query_Comment,
+		    grp=u32(group),
 		    begin=begin,
 		    len=idx^-begin })
 
@@ -577,7 +590,7 @@ _get_line_comment :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Retur
 }
 
 @(private)
-_get_symbol :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Return {
+_get_symbol :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Result {
 	begin := idx^
 	//idx^ += 1
 
@@ -585,7 +598,7 @@ _get_symbol :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Return {
 	ok : bool
 
 	/* Check for 2 character symbols first */
-	if begin < cast(u32)len(self.q) {
+	if begin < u32(len(self.q)) {
 		type, ok = self.tok_map[self.q[begin:begin+2]]
 	}
 
@@ -609,9 +622,9 @@ _get_symbol :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Return {
 		return lex_error(self, idx^)
 	}
 
-	append(&self.tok_vec, Token {
+	append(&self.tokens, Token {
 		    type=type,
-		    grp=cast(u32)group,
+		    grp=u32(group),
 		    begin=begin,
 		    len=idx^-begin })
 
@@ -622,56 +635,61 @@ _is_symbol :: proc(c: u8) -> bool {
 	return strings.index_byte("#()!=+-*/%~|&^.<>,;", c) >= 0
 }
 
-lex_tokenize :: proc(self: ^Sql_Parser) -> Sql_Return {
-	fmt.println(self.q)
+lex_tokenize :: proc(self: ^Sql_Parser) -> Sql_Result {
 	i : u32 = 0
-
-	append(&self.tok_vec, Token { type=.Query_Begin })
+	append(&self.tokens, Token { type=.Query_Begin })
 
 	group : int
 	group_stack : [dynamic]int
 	append(&group_stack, group)
+	defer delete(group_stack)
 
 	ret := 0
 
-	for ret == 0 && i < cast(u32)len(self.q) {
+	for ret == 0 && i < u32(len(self.q)) {
 		tok_len := 0
-		if unicode.is_space(cast(rune)self.q[i]) {
+		switch {
+		case unicode.is_space(rune(self.q[i])):
 			_skip_whitespace(self, &i)
-		} else if self.q[i] == '[' {
+		case self.q[i] == '[':
 			_get_qualified_name(self, group, &i) or_return
-		} else if unicode.is_digit(cast(rune)self.q[i]) ||
-		    (i+1 < cast(u32)len(self.q) && unicode.is_digit(cast(rune)self.q[i])) {
+		case unicode.is_digit(rune(self.q[i])) ||
+		    (i+1 < u32(len(self.q)) && unicode.is_digit(rune(self.q[i]))):
 			_get_numeric(self, group, &i) or_return
-		} else if self.q[i] == '@' {
+		case self.q[i] == '@':
 			_get_variable(self, group, &i)
-		} else if self.q[i] == '(' {
-			i += 1
+		case self.q[i] == '(':
 			group += 1
 			append(&group_stack, group)
-			append(&self.tok_vec, Token {type=.Sym_Lparen, grp=cast(u32)group, begin=i, len=1})
-		} else if self.q[i] == ')' {
+			append(&self.tokens, Token {type=.Sym_Lparen, grp=u32(group), begin=i, len=1})
+			i += 1
+		case self.q[i] == ')':
 			if len(group_stack) == 1 {
 				fmt.fprintf(os.stderr, "Unmatched ')'\n")
 				return lex_error(self, i)
 			}
+			append(&self.tokens, Token {type=.Sym_Rparen, grp=u32(group), begin=i, len=1})
 			i += 1
-			append(&self.tok_vec, Token {type=.Sym_Rparen, grp=cast(u32)group, begin=i, len=1})
 			group = pop(&group_stack)
-		} else if _is_symbol(self.q[i]) {
+		case _is_symbol(self.q[i]):
 			_get_symbol(self, group, &i) or_return
-		} else if self.q[i] == '_' ||
-		    unicode.is_digit(cast(rune)self.q[i]) ||
-		    unicode.is_alpha(cast(rune)self.q[i]) {
+		case self.q[i] == '_' ||
+		    unicode.is_digit(rune(self.q[i])) ||
+		    unicode.is_alpha(rune(self.q[i])):
 			_get_name(self, group, &i)
-		} else {
+		case:
 			return lex_error(self, i)
 		}
 	}
 
-	append(&self.tok_vec, Token { type = .Query_End })
+	if len(group_stack) > 1 {
+		fmt.fprintf(os.stderr, "unmatched '('\n")
+		return lex_error(self, i)
+	}
 
-	for tok in self.tok_vec {
+	append(&self.tokens, Token { type = .Query_End })
+
+	for tok in self.tokens {
 		if enum_name, ok := fmt.enum_value_to_string(tok.type); ok {
 			if tok.len > 0 {
 				fmt.println(enum_name, self.q[tok.begin:tok.begin+tok.len])

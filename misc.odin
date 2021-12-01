@@ -1,6 +1,6 @@
 package streamql
 
-Sql_Return :: enum {
+Sql_Result :: enum {
 	Ok,
 	Error,
 }

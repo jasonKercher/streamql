@@ -27,7 +27,7 @@ main :: proc()
 	
 	parser : Sql_Parser
 
-	sql_parser_init(&parser)
-	sql_parser_parse(&parser, query_str)
+	parse_init(&parser)
+	parse_parse(&parser, query_str)
 }
 
