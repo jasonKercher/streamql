@@ -6,12 +6,13 @@ import "core:strings"
 import "core:unicode"
 
 Token :: struct {
-	begin:  u32,
-	len:    u32,
-	grp:    u32,
-	mingrp: u32,  /* Intending to get rid of this */
-	type:   Token_Type,
-	done:   bool,
+	begin:    u32,
+	len:      u32,
+	group:    u32,
+	min_grp:  u32,  /* Intending to get rid of this */
+	end_expr: u32,
+	type:     Token_Type,
+	done:     bool,
 }
 
 Token_Type :: enum {
@@ -462,7 +463,7 @@ _get_name :: proc(self: ^Sql_Parser, group: int, idx: ^u32) {
 
 	append(&self.tokens, Token {
 		    type=type,
-		    grp=u32(group),
+		    group=u32(group),
 		    begin=begin,
 		    len=idx^-begin })
 }
@@ -485,7 +486,7 @@ _get_qualified_name :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Res
 
 	append(&self.tokens, Token {
 		    type = .Query_Name,
-		    grp=u32(group),
+		    group=u32(group),
 		    begin = real_begin,
 		    len = real_end-real_begin })
 
@@ -516,7 +517,7 @@ _get_numeric :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Result {
 
 	append(&self.tokens, Token {
 		    type=type,
-		    grp=u32(group),
+		    group=u32(group),
 		    begin=begin,
 		    len=idx^-begin })
 
@@ -535,7 +536,7 @@ _get_variable :: proc(self: ^Sql_Parser, group: int, idx: ^u32) {
 
 	append(&self.tokens, Token {
 		    type=.Query_Variable,
-		    grp=u32(group),
+		    group=u32(group),
 		    begin=begin,
 		    len=idx^-begin })
 }
@@ -561,7 +562,7 @@ _get_block_comment :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Resu
 
 	append(&self.tokens, Token {
 		    type=.Query_Comment,
-		    grp=u32(group),
+		    group=u32(group),
 		    begin=begin,
 		    len=idx^-begin })
 
@@ -582,7 +583,7 @@ _get_line_comment :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Resul
 
 	append(&self.tokens, Token {
 		    type=.Query_Comment,
-		    grp=u32(group),
+		    group=u32(group),
 		    begin=begin,
 		    len=idx^-begin })
 
@@ -624,7 +625,7 @@ _get_symbol :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Result {
 
 	append(&self.tokens, Token {
 		    type=type,
-		    grp=u32(group),
+		    group=u32(group),
 		    begin=begin,
 		    len=idx^-begin })
 
@@ -661,14 +662,14 @@ lex_tokenize :: proc(self: ^Sql_Parser) -> Sql_Result {
 		case self.q[i] == '(':
 			group += 1
 			append(&group_stack, group)
-			append(&self.tokens, Token {type=.Sym_Lparen, grp=u32(group), begin=i, len=1})
+			append(&self.tokens, Token {type=.Sym_Lparen, group=u32(group), begin=i, len=1})
 			i += 1
 		case self.q[i] == ')':
 			if len(group_stack) == 1 {
 				fmt.fprintf(os.stderr, "Unmatched ')'\n")
 				return lex_error(self, i)
 			}
-			append(&self.tokens, Token {type=.Sym_Rparen, grp=u32(group), begin=i, len=1})
+			append(&self.tokens, Token {type=.Sym_Rparen, group=u32(group), begin=i, len=1})
 			i += 1
 			group = pop(&group_stack)
 		case _is_symbol(self.q[i]):
@@ -689,15 +690,16 @@ lex_tokenize :: proc(self: ^Sql_Parser) -> Sql_Result {
 
 	append(&self.tokens, Token { type = .Query_End })
 
-	for tok in self.tokens {
-		if enum_name, ok := fmt.enum_value_to_string(tok.type); ok {
-			if tok.len > 0 {
-				fmt.println(enum_name, self.q[tok.begin:tok.begin+tok.len])
-			} else {
-				fmt.println(enum_name)
-			}
-		}
-	}
+	/* Dump tokens */
+	//for tok in self.tokens {
+	//	if enum_name, ok := fmt.enum_value_to_string(tok.type); ok {
+	//		if tok.len > 0 {
+	//			fmt.println(enum_name, self.q[tok.begin:tok.begin+tok.len])
+	//		} else {
+	//			fmt.println(enum_name)
+	//		}
+	//	}
+	//}
 
 	return .Ok
 }
