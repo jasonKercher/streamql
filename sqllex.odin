@@ -457,10 +457,10 @@ _get_name :: proc(self: ^Sql_Parser, group: int, idx: ^u32) {
 @(private)
 _get_qualified_name :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Result {
 	real_begin := idx^ + 1
-	for ; self.q[idx^] != ']' && idx^ < u32(len(self.q)); idx^ += 1 {}
+	for ; idx^ < u32(len(self.q)) && self.q[idx^] != ']'; idx^ += 1 {}
 
-	if self.q[idx^] != ']' {
-		return lex_error(self, idx^)
+	if idx^ >= u32(len(self.q)) {
+		return lex_error(self, idx^, "unmatched '['")
 	}
 
 	idx^ += 1
@@ -490,7 +490,7 @@ _get_numeric :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Result {
 	    (unicode.is_digit(rune(self.q[idx^])) || self.q[idx^] == '.'); idx^ += 1 {
 		if self.q[idx^] == '.' {
 			if is_float {
-				return lex_error(self, idx^)
+				return lex_error(self, idx^, "malformed decimal")
 			}
 			is_float = true
 		}
@@ -540,8 +540,7 @@ _get_block_comment :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Resu
 	}
 
 	if idx^+1 >= u32(len(self.q)) {
-		fmt.fprintf(os.stderr, "unmatched `/*'\n")
-		return lex_error(self, idx^)
+		return lex_error(self, idx^, "unmatched `/*'")
 	}
 
 	idx^ += 2
@@ -606,7 +605,7 @@ _get_symbol :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Result {
 	}
 
 	if !ok {
-		return lex_error(self, idx^)
+		return lex_error(self, idx^, "invalid symbol")
 	}
 
 	append(&self.tokens, Token {
@@ -652,8 +651,7 @@ lex_tokenize :: proc(self: ^Sql_Parser) -> Sql_Result {
 			i += 1
 		case self.q[i] == ')':
 			if len(group_stack) == 1 {
-				fmt.fprintf(os.stderr, "Unmatched ')'\n")
-				return lex_error(self, i)
+				return lex_error(self, i, "unmatched ')'")
 			}
 			append(&self.tokens, Token {type=.Sym_Rparen, group=u32(group), begin=i, len=1})
 			i += 1
@@ -670,8 +668,7 @@ lex_tokenize :: proc(self: ^Sql_Parser) -> Sql_Result {
 	}
 
 	if len(group_stack) > 1 {
-		fmt.fprintf(os.stderr, "unmatched '('\n")
-		return lex_error(self, i)
+		return lex_error(self, i, "unmatched '('")
 	}
 
 	append(&self.tokens, Token { type = .Query_End })
@@ -695,21 +692,100 @@ lex_lex :: proc (self: ^Sql_Parser) -> Sql_Result {
 		_init_map(self)
 	}
 
+	resize(&self.tokens, 0)
+	resize(&self.lf_vec, 0)
 	return lex_tokenize(self)
 }
 
-lex_error :: proc(self: ^Sql_Parser, idx: u32) -> Sql_Result {
+lex_error :: proc(self: ^Sql_Parser, idx: u32, msg: string = "lex error") -> Sql_Result {
 	line, off := parse_get_pos(self, idx)
-	fmt.fprintf(os.stderr, "Lexer error (line: %d, pos: %d)\n", line, off)
+	fmt.fprintf(os.stderr, "%s (line: %d, pos: %d)\n", msg, line, off)
 	return .Error
 }
 
 @(test)
-invalid_lexing :: proc(t: ^testing.T) {
+lex_error_check :: proc(t: ^testing.T) {
 	parser : Sql_Parser
 	parse_init(&parser)
-	parser.q = "select"
 
+	/* Unmatched tokens */
+	parser.q = "select a,b,c,[ntll from foo where 1=1"
 	testing.expect_value(t, lex_lex(&parser), Sql_Result.Error)
+
+	parser.q = "select a,b,c,ntll] from foo where 1=1"
+	testing.expect_value(t, lex_lex(&parser), Sql_Result.Error)
+
+	parser.q = "select 124+35*24 / (124-2 from [foo] where 1<>2"
+	testing.expect_value(t, lex_lex(&parser), Sql_Result.Error)
+
+	parser.q = "select 124+35*24 / (124-2))"
+	testing.expect_value(t, lex_lex(&parser), Sql_Result.Error)
+
+	parser.q = "select /* a comment * / 1,2 from foo"
+	testing.expect_value(t, lex_lex(&parser), Sql_Result.Error)
+	
+	/* Will throw parser error as multiply, divide */
+	//parser.q = "select / * a comment */ 1,2 from foo"
+	//testing.expect_value(t, lex_lex(&parser), Sql_Result.Error)
+
+	/* Illegal symbols */
+	parser.q = "select $var from foo join foo on 1=1"
+	testing.expect_value(t, lex_lex(&parser), Sql_Result.Error)
+
+	parser.q = "select `col` from foo join foo on 1=1"
+	testing.expect_value(t, lex_lex(&parser), Sql_Result.Error)
+
+	/* Malformed number */
+	parser.q = "select 1234.1234.1234 from foo join foo on 1=1"
+	testing.expect_value(t, lex_lex(&parser), Sql_Result.Error)
+
+	/* Oh shit this is actually legal in SQL Server... */
+	//parser.q = "select 1234shnt from foo join foo on 1=1"
+	//testing.expect_value(t, lex_lex(&parser), Sql_Result.Error)
+}
+
+@(test)
+lex_check :: proc(t: ^testing.T) {
+	parser : Sql_Parser
+	parse_init(&parser)
+
+	/* For the following tests...
+	 * len(parser.tokens) = token_count + 2
+	 * This is because every query begins and ends 
+	 * with .Query_Begin and .Query_End
+	 */
+	
+	//         01      2   3    4   5    6   7  890 1
+	parser.q = "select col from foo join foo on 1=1"
+	testing.expect_value(t, lex_lex(&parser), Sql_Result.Ok)
+	testing.expect_value(t, len(parser.tokens), 12)
+	testing.expect_value(t, parser.tokens[0].type, Token_Type.Query_Begin)
+	testing.expect_value(t, parser.tokens[1].type, Token_Type.Select)
+	testing.expect_value(t, parser.tokens[2].type, Token_Type.Query_Name)
+	testing.expect_value(t, parser.tokens[3].type, Token_Type.From)
+	testing.expect_value(t, parser.tokens[4].type, Token_Type.Query_Name)
+	testing.expect_value(t, parser.tokens[5].type, Token_Type.Join)
+	testing.expect_value(t, parser.tokens[6].type, Token_Type.Query_Name)
+	testing.expect_value(t, parser.tokens[7].type, Token_Type.On)
+	testing.expect_value(t, parser.tokens[8].type, Token_Type.Literal_Int)
+	testing.expect_value(t, parser.tokens[9].type, Token_Type.Sym_Eq)
+	testing.expect_value(t, parser.tokens[10].type, Token_Type.Literal_Int)
+	testing.expect_value(t, parser.tokens[11].type, Token_Type.Query_End)
+
+	//0      1
+	//      2      34 5 6 7 8 9 01 234567 8
+
+	//      9    0   1
+	//23
+	//4  56      78 9
+	parser.q = `
+	select (
+		select (1 + 2 * 5 + (33-(1))) [bar baz]
+		from foo f
+	) f 
+	from (select 1) x
+	`
+	testing.expect_value(t, lex_lex(&parser), Sql_Result.Ok)
+	testing.expect_value(t, len(parser.tokens), 32)
 }
 

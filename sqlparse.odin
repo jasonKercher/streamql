@@ -88,7 +88,7 @@ _send_column_or_const :: proc(self: ^Sql_Parser, begin: u32) -> Sql_Result {
 			if field_name_tok.type != .Query_Name {
 				return parse_error(self, "unexpected token")
 			}
-			return parse_send_name(self, field_name_tok, tok)
+			return parse_send_name(self, tok, field_name_tok)
 		}
 		return parse_send_name(self, tok, nil)
 	case .Literal_Int:
@@ -138,7 +138,7 @@ _skip_subquery :: proc(self: ^Sql_Parser) -> Sql_Result {
 		}
 	}
 
-	if (level > 0) {
+	if level > 0 {
 		return parse_error(self, "failed to parse subquery")
 	}
 
@@ -156,7 +156,7 @@ _is_a_single_term :: proc(self: ^Sql_Parser, begin, end: u32) -> bool {
 		case .Query_Comment:
 			continue
 		case .Sym_Dot:
-			if (!term_found) {
+			if !term_found {
 				return false
 			}
 			has_table_name = true
@@ -171,7 +171,7 @@ _is_a_single_term :: proc(self: ^Sql_Parser, begin, end: u32) -> bool {
 		case .Literal_Float:
 			fallthrough
 		case .Literal_String:
-			if (term_found && !has_table_name) {
+			if term_found && !has_table_name {
 				return false
 			}
 			term_found = true
@@ -368,6 +368,7 @@ _find_expression :: proc(self: ^Sql_Parser, allow_star: bool) -> (level: int, re
 		} else {
 			break
 		}
+		_get_next_token(self)
 	}
 
 	state := _Expr_State.Expect_Val
@@ -387,7 +388,7 @@ _find_expression :: proc(self: ^Sql_Parser, allow_star: bool) -> (level: int, re
 
 			#partial switch self.tokens[self.curr].type {
 			case .Sym_Multiply:
-				if (!allow_star) {
+				if !allow_star {
 					return 0, parse_error(self, "unexpected token")
 				}
 				self.tokens[self.curr].type = .Sym_Asterisk
@@ -427,7 +428,7 @@ _find_expression :: proc(self: ^Sql_Parser, allow_star: bool) -> (level: int, re
 				in_expr = false
 			}
 
-			if (may_be_function) {
+			if may_be_function {
 				fn_group := _get_func_group(self.tokens[self.curr].type)
 				next := _peek_next_token(self, self.curr)
 				if self.tokens[next].type != .Sym_Lparen {
@@ -831,7 +832,7 @@ _parse_source_item :: proc(self: ^Sql_Parser) -> Sql_Result {
 		parse_send_table_source(self, &self.tokens[self.curr])
 	case .Sym_Lparen:
 		_get_next_token_or_die(self) or_return
-		if (self.tokens[self.curr].type != .Select) {
+		if self.tokens[self.curr].type != .Select {
 			return parse_error(self, "expected subquery")
 		}
 		_parse_subquery_source(self)
@@ -851,7 +852,7 @@ _parse_source_item :: proc(self: ^Sql_Parser) -> Sql_Result {
 	if self.tokens[self.curr].type == .Query_Name ||
 	    self.tokens[self.curr].type == .Query_Variable {
 		parse_send_source_alias(self, &self.tokens[self.curr])
-		if (_get_next_token(self)) {
+		if _get_next_token(self) {
 			return .Ok
 		}
 	}
@@ -1122,7 +1123,7 @@ _parse_raiserror_stmt :: proc(self: ^Sql_Parser) -> Sql_Result {
 
 @(private)
 _parse_enter :: proc(self: ^Sql_Parser) -> Sql_Result {
-	if (self.tokens[self.curr].type == .Query_End) {
+	if self.tokens[self.curr].type == .Query_End {
 		return .Ok
 	}
 	#partial switch self.tokens[self.curr].type {
@@ -1220,20 +1221,51 @@ parse_error :: proc(self: ^Sql_Parser, msg: string) -> Sql_Result {
 
 parse_parse :: proc(self: ^Sql_Parser, query_str: string) -> Sql_Result {
 	self.q = query_str
-	lex_lex(self)
+	lex_lex(self) or_return
 
 	self.curr = 0
-	if (_get_next_token(self)) {
+	if _get_next_token(self) {
 		return .Ok
 	}
 
 	return _parse_enter(self)
 }
 
+/* Let's fuck this shit up */
 @(test)
-parse_test :: proc (t: ^testing.T) {
+parse_error_check :: proc (t: ^testing.T) {
 	parser: Sql_Parser
 	parse_init(&parser)
-	parse_parse(&parser, "select 1")
-	//testing.error(t, "shit!")
+
+	ret: Sql_Result
+
+	ret = parse_parse(&parser, "select")
+	testing.expect_value(t, ret, Sql_Result.Error)
+
+	ret = parse_parse(&parser, "select 1 = 2")
+	testing.expect_value(t, ret, Sql_Result.Error)
+
+	ret = parse_parse(&parser, "select 1 +* 2")
+	testing.expect_value(t, ret, Sql_Result.Error)
+
+	ret = parse_parse(&parser, "select a,b 34")
+	testing.expect_value(t, ret, Sql_Result.Error)
+
+	ret = parse_parse(&parser, "select a a a")
+	testing.expect_value(t, ret, Sql_Result.Error)
+
+	ret = parse_parse(&parser, "select 1(55+2)")
+	testing.expect_value(t, ret, Sql_Result.Error)
+
+	ret = parse_parse(&parser, "select (select 1 from foo) [my alias]")
+	testing.expect_value(t, ret, Sql_Result.Error)
+
+	ret = parse_parse(&parser, "select from foo")
+	testing.expect_value(t, ret, Sql_Result.Error)
+
+	ret = parse_parse(&parser, "select 1 where 1=1 from foo")
+	testing.expect_value(t, ret, Sql_Result.Error)
+
+	ret = parse_parse(&parser, "select from foo where 1")
+	testing.expect_value(t, ret, Sql_Result.Error)
 }
