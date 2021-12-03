@@ -4,6 +4,7 @@ import "core:os"
 import "core:fmt"
 import "core:strings"
 import "core:unicode"
+import "core:testing"
 
 Token :: struct {
 	begin:    u32,
@@ -424,21 +425,6 @@ _init_map :: proc(self: ^Sql_Parser) {
 	//fmt.fprintf(os.stderr, "mapsize: %d\n", len(self.tok_map))
 }
 
-lex_lex :: proc (self: ^Sql_Parser) {
-	if len(self.tok_map) == 0 {
-		_init_map(self)
-	}
-
-	lex_tokenize(self)
-
-}
-
-lex_error :: proc(self: ^Sql_Parser, idx: u32) -> Sql_Result {
-	line, off := parse_get_pos(self, idx)
-	fmt.fprintf(os.stderr, "Lexer error (line: %d, pos: %d)\n", line, off)
-	return .Error
-}
-
 @(private)
 _skip_whitespace :: proc(self: ^Sql_Parser, idx: ^u32)
 {
@@ -452,9 +438,9 @@ _skip_whitespace :: proc(self: ^Sql_Parser, idx: ^u32)
 @(private)
 _get_name :: proc(self: ^Sql_Parser, group: int, idx: ^u32) {
 	begin := idx^
-	for ; self.q[idx^] == '_' ||
+	for ; idx^ < u32(len(self.q)) && (self.q[idx^] == '_' ||
 	      unicode.is_digit(rune(self.q[idx^])) ||
-	      unicode.is_alpha(rune(self.q[idx^])); idx^ += 1 {}
+	      unicode.is_alpha(rune(self.q[idx^]))); idx^ += 1 {}
 
 	type, ok := self.tok_map[self.q[begin:idx^]]
 	if !ok {
@@ -703,3 +689,27 @@ lex_tokenize :: proc(self: ^Sql_Parser) -> Sql_Result {
 
 	return .Ok
 }
+
+lex_lex :: proc (self: ^Sql_Parser) -> Sql_Result {
+	if len(self.tok_map) == 0 {
+		_init_map(self)
+	}
+
+	return lex_tokenize(self)
+}
+
+lex_error :: proc(self: ^Sql_Parser, idx: u32) -> Sql_Result {
+	line, off := parse_get_pos(self, idx)
+	fmt.fprintf(os.stderr, "Lexer error (line: %d, pos: %d)\n", line, off)
+	return .Error
+}
+
+@(test)
+invalid_lexing :: proc(t: ^testing.T) {
+	parser : Sql_Parser
+	parse_init(&parser)
+	parser.q = "select"
+
+	testing.expect_value(t, lex_lex(&parser), Sql_Result.Error)
+}
+

@@ -18,14 +18,20 @@ parse_send_string :: proc(self: ^Sql_Parser, tok: ^Token) -> Sql_Result {
 	return .Ok
 }
 
-parse_send_name :: proc(self: ^Sql_Parser, tok: ^Token, table_name_tok: ^Token) -> Sql_Result {
+parse_send_name :: proc(
+	self: ^Sql_Parser,
+	tok: ^Token,
+	table_name_tok: ^Token,
+) -> Sql_Result {
 	if (table_name_tok == nil) {
 		fmt.fprintf(os.stderr, "SEND NAME %s\n", token_to_string(self, tok))
 	}
-	fmt.fprintf(os.stderr,
-	        "SEND NAME %s (WITH TABLE %s)\n",
-	        token_to_string(self, tok),
-	        token_to_string(self, table_name_tok))
+	fmt.fprintf(
+		os.stderr,
+		"SEND NAME %s (WITH TABLE %s)\n",
+		token_to_string(self, tok),
+		token_to_string(self, table_name_tok),
+	)
 	return .Ok
 }
 
@@ -142,7 +148,7 @@ parse_send_join_type :: proc(self: ^Sql_Parser, tok: ^Token) -> Sql_Result {
 		break
 	case:
 		fmt.fprintf(os.stderr, "UNKNOWN JOIN TYPE")
-		/* Return Error? This shouldn't really be possible */
+	/* Return Error? This shouldn't really be possible */
 	}
 	fmt.fprintf(os.stderr, "SEND JOIN TYPE %s\n", type_str)
 	return .Ok

@@ -20,56 +20,6 @@ Func_Group :: enum {
 	Scalar,
 }
 
-parse_init :: proc(self: ^Sql_Parser) {
-	/* Current length of token map is 185. Looks like the maps resize
-	 * at 3/4 full, so that puts us at 247 in order to not resize.
-	 */
-	self^ = {
-		lf_vec = make([dynamic]u32),
-		tokens = make([dynamic]Token),
-		tok_map = make(map[string]Token_Type, 256),
-	}
-}
-
-parse_destroy :: proc(self: ^Sql_Parser) {
-	delete(self.lf_vec)
-	delete(self.tokens)
-	delete(self.tok_map)
-}
-
-parse_get_pos :: proc(self: ^Sql_Parser, idx: u32) -> (line, off: u32) {
-	line = 1
-	for lf in self.lf_vec {
-		if lf > idx {
-			break
-		}
-		off = lf
-		line += 1
-	}
-	off = idx - off
-	return
-}
-
-token_get_pos :: proc(self: ^Sql_Parser, tok: ^Token) -> (line, off: u32) {
-	return parse_get_pos(self, tok.begin)
-}
-
-token_to_string :: proc(self: ^Sql_Parser, tok: ^Token) -> string {
-	return self.q[tok.begin:tok.begin+tok.len]
-}
-
-
-/********/
-
-parse_error :: proc(self: ^Sql_Parser, msg: string) -> Sql_Result {
-	error_tok := self.tokens[self.curr]
-	error_str := self.q[error_tok.begin:error_tok.begin+error_tok.len]
-	line, off := parse_get_pos(self, self.tokens[self.curr].begin)
-
-	fmt.fprintf(os.stderr, "%s at `%s': (line: %d, pos: %d)\n", msg, error_str, line, off)
-	return .Error
-}
-
 @(private)
 _get_next_token :: proc {_get_next_token_from_here, _get_next_token_from_curr}
 
@@ -418,7 +368,6 @@ _find_expression :: proc(self: ^Sql_Parser, allow_star: bool) -> (level: int, re
 		} else {
 			break
 		}
-		_get_next_token(self)
 	}
 
 	state := _Expr_State.Expect_Val
@@ -508,6 +457,8 @@ _find_expression :: proc(self: ^Sql_Parser, allow_star: bool) -> (level: int, re
 			case .Sym_Plus:
 				fallthrough
 			case .Sym_Minus:
+				fallthrough
+			case .Sym_Multiply:
 				fallthrough
 			case .Sym_Divide:
 				fallthrough
@@ -1215,6 +1166,56 @@ _parse_enter :: proc(self: ^Sql_Parser) -> Sql_Result {
 		return parse_error(self, "unexpected token")
 	}
 	return .Ok
+}
+
+parse_init :: proc(self: ^Sql_Parser) {
+	/* Current length of token map is 185. Looks like the maps resize
+	 * at 3/4 full, so that puts us at 247 in order to not resize.
+	 */
+	self^ = {
+		lf_vec = make([dynamic]u32),
+		tokens = make([dynamic]Token),
+		tok_map = make(map[string]Token_Type, 256),
+	}
+}
+
+parse_destroy :: proc(self: ^Sql_Parser) {
+	delete(self.lf_vec)
+	delete(self.tokens)
+	delete(self.tok_map)
+}
+
+parse_get_pos :: proc(self: ^Sql_Parser, idx: u32) -> (line, off: u32) {
+	line = 1
+	for lf in self.lf_vec {
+		if lf > idx {
+			break
+		}
+		off = lf
+		line += 1
+	}
+	off = idx - off
+	return
+}
+
+token_get_pos :: proc(self: ^Sql_Parser, tok: ^Token) -> (line, off: u32) {
+	return parse_get_pos(self, tok.begin)
+}
+
+token_to_string :: proc(self: ^Sql_Parser, tok: ^Token) -> string {
+	return self.q[tok.begin:tok.begin+tok.len]
+}
+
+
+/********/
+
+parse_error :: proc(self: ^Sql_Parser, msg: string) -> Sql_Result {
+	error_tok := self.tokens[self.curr]
+	error_str := self.q[error_tok.begin:error_tok.begin+error_tok.len]
+	line, off := parse_get_pos(self, self.tokens[self.curr].begin)
+
+	fmt.fprintf(os.stderr, "%s at `%s': (line: %d, pos: %d)\n", msg, error_str, line, off)
+	return .Error
 }
 
 parse_parse :: proc(self: ^Sql_Parser, query_str: string) -> Sql_Result {
