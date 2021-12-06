@@ -2,6 +2,7 @@ package streamql
 
 import "core:fmt"
 import "core:os"
+import "core:math/bits"
 
 import "core:testing"
 
@@ -11,6 +12,7 @@ Sql_Parser :: struct {
 	tokens:  [dynamic]Token,
 	tok_map: map[string]Token_Type,
 	curr:    u32,
+	q_count: u32,
 }
 
 Func_Group :: enum {
@@ -79,16 +81,20 @@ _send_column_or_const :: proc(self: ^Sql_Parser, begin: u32) -> Sql_Result {
 	tok := &self.tokens[begin]
 	#partial switch tok.type {
 	case .Sym_Asterisk:
-		return parse_error(self, "send asterisk incomplete")
+		return parse_send_asterisk(self, tok, nil)
 	case .Query_Name:
 		next_idx := _peek_next_token(self, begin)
 		if self.tokens[next_idx].type == .Sym_Dot {
 			next_idx = _peek_next_token(self, next_idx)
 			field_name_tok := &self.tokens[next_idx]
-			if field_name_tok.type != .Query_Name {
+			#partial switch field_name_tok.type {
+			case .Query_Name:
+				return parse_send_name(self, field_name_tok, tok)
+			case .Sym_Asterisk:
+				return parse_send_asterisk(self, field_name_tok, tok)
+			case:	
 				return parse_error(self, "unexpected token")
 			}
-			return parse_send_name(self, tok, field_name_tok)
 		}
 		return parse_send_name(self, tok, nil)
 	case .Literal_Int:
@@ -147,7 +153,7 @@ _skip_subquery :: proc(self: ^Sql_Parser) -> Sql_Result {
 }
 
 @(private)
-_is_a_single_term :: proc(self: ^Sql_Parser, begin, end: u32) -> bool {
+_is_single_term :: proc(self: ^Sql_Parser, begin, end: u32) -> bool {
 	term_found: bool
 	has_table_name: bool
 
@@ -155,6 +161,8 @@ _is_a_single_term :: proc(self: ^Sql_Parser, begin, end: u32) -> bool {
 		#partial switch self.tokens[begin].type {
 		case .Query_Comment:
 			continue
+		case .Sym_Rparen:
+			return term_found
 		case .Sym_Dot:
 			if !term_found {
 				return false
@@ -185,28 +193,24 @@ _is_a_single_term :: proc(self: ^Sql_Parser, begin, end: u32) -> bool {
 }
 
 @(private)
-_parse_expression :: proc(self: ^Sql_Parser, begin, end: u32, min_group: int) -> Sql_Result {
-	/* If we don't accomplish anything, someone wrote something
-	 * dumb like `select (1+1)`. We will need to re-enter this
-	 * function with min_group set to -1
-	 */
-	did_some_breakdown: bool
-
-	curr_group := self.tokens[begin].group
-	if min_group != -1 {
-		curr_group = u32(min_group)
-	}
-
+_parse_expression :: proc(self: ^Sql_Parser, begin, end: u32, group: u16) -> Sql_Result {
 	begin := begin
 	end := end
 
-	for self.tokens[begin].type == .Sym_Lparen || self.tokens[begin].type == .Query_Comment {
+	for self.tokens[begin].type == .Sym_Lparen && self.tokens[end-1].type == .Sym_Rparen {
 		begin += 1
-	}
-
-	for self.tokens[end].type == .Sym_Rparen || self.tokens[end].type == .Query_Comment {
 		end -= 1
 	}
+
+	group := self.tokens[begin].group
+
+	//for self.tokens[begin].type == .Sym_Lparen || self.tokens[begin].type == .Query_Comment {
+	//	begin += 1
+	//}
+
+	//for self.tokens[end-1].type == .Sym_Rparen || self.tokens[end-1].type == .Query_Comment {
+	//	end -= 1
+	//}
 
 	if self.tokens[begin].type == .Select {
 		parse_enter_subquery_const(self)
@@ -222,13 +226,13 @@ _parse_expression :: proc(self: ^Sql_Parser, begin, end: u32, min_group: int) ->
 	}
 
 	/* Leaf node?? */
-	if _is_a_single_term(self, begin, end) {
+	if _is_single_term(self, begin, end) {
 		return _send_column_or_const(self, begin)
 	}
 
 	/* Lowest precedence first */
 	for i := begin; i < end; i += 1 {
-		if self.tokens[i].done || self.tokens[i].group != curr_group {
+		if self.tokens[i].done || self.tokens[i].group != group {
 			continue
 		}
 		#partial switch self.tokens[i].type {
@@ -241,11 +245,10 @@ _parse_expression :: proc(self: ^Sql_Parser, begin, end: u32, min_group: int) ->
 		case .Sym_Bit_Or:
 			fallthrough
 		case .Sym_Bit_Xor:
-			did_some_breakdown = true
 			self.tokens[i].done = true
 			parse_enter_function(self, &self.tokens[i])
-			_parse_expression(self, begin, i, -1) or_return
-			_parse_expression(self, i+1, end, -1) or_return
+			_parse_expression(self, begin, i, self.tokens[begin].group) or_return
+			_parse_expression(self, i + 1, end, self.tokens[i+1].group) or_return
 			parse_leave_function(self, &self.tokens[i])
 		case:
 		}
@@ -253,7 +256,7 @@ _parse_expression :: proc(self: ^Sql_Parser, begin, end: u32, min_group: int) ->
 
 	/* multiplication derivatives */
 	for i := begin; i < end; i += 1 {
-		if self.tokens[i].done || self.tokens[i].group != curr_group {
+		if self.tokens[i].done || self.tokens[i].group != group {
 			continue
 		}
 		#partial switch self.tokens[i].type {
@@ -262,11 +265,10 @@ _parse_expression :: proc(self: ^Sql_Parser, begin, end: u32, min_group: int) ->
 		case .Sym_Divide:
 			fallthrough
 		case .Sym_Modulus:
-			did_some_breakdown = true
 			self.tokens[i].done = true
 			parse_enter_function(self, &self.tokens[i])
-			_parse_expression(self, begin, i, -1) or_return
-			_parse_expression(self, i+1, end, -1) or_return
+			_parse_expression(self, begin, i, self.tokens[begin].group) or_return
+			_parse_expression(self, i + 1, end, self.tokens[i+1].group) or_return
 			parse_leave_function(self, &self.tokens[i])
 		case:
 		}
@@ -274,7 +276,7 @@ _parse_expression :: proc(self: ^Sql_Parser, begin, end: u32, min_group: int) ->
 
 	/* unary expressions */
 	for i := begin; i < end; i += 1 {
-		if self.tokens[i].done || self.tokens[i].group != curr_group {
+		if self.tokens[i].done || self.tokens[i].group != group {
 			continue
 		}
 		#partial switch self.tokens[i].type {
@@ -283,10 +285,9 @@ _parse_expression :: proc(self: ^Sql_Parser, begin, end: u32, min_group: int) ->
 		case .Sym_Minus_Unary:
 			fallthrough
 		case .Sym_Bit_Not_Unary:
-			did_some_breakdown = true
 			self.tokens[i].done = true
 			parse_enter_function(self, &self.tokens[i])
-			_parse_expression(self, i+1, end, -1) or_return
+			_parse_expression(self, i + 1, end, self.tokens[i+1].group) or_return
 			parse_leave_function(self, &self.tokens[i])
 		case:
 		}
@@ -294,11 +295,10 @@ _parse_expression :: proc(self: ^Sql_Parser, begin, end: u32, min_group: int) ->
 
 	/* case expressions */
 	for i := begin; i < end; i += 1 {
-		if self.tokens[i].done || self.tokens[i].group != curr_group {
+		if self.tokens[i].done || self.tokens[i].group != group {
 			continue
 		}
 		if self.tokens[i].type == .Case {
-			did_some_breakdown = true
 			self.tokens[i].done = true
 			_parse_case_stmt(self) or_return
 		}
@@ -306,18 +306,34 @@ _parse_expression :: proc(self: ^Sql_Parser, begin, end: u32, min_group: int) ->
 
 	/* functions */
 	for i := begin; i != end; i += 1 {
-		if self.tokens[i].done || self.tokens[i].group != curr_group {
+		if self.tokens[i].done || self.tokens[i].group != group {
 			continue
 		}
 		if self.tokens[i].type == .Case {
-			did_some_breakdown = true
 			self.tokens[i].done = true
 			_parse_function(self) or_return
 		}
 	}
 
-	if !did_some_breakdown {
-		return _parse_expression(self, begin, end, -1)
+	return .Ok
+}
+
+@(private)
+_parse_expression_runner :: proc(self: ^Sql_Parser, begin, end: u32) -> Sql_Result {
+	min_group: u16 = bits.U16_MAX
+	max_group: u16 = 0
+
+	for i := begin; i < end; i += 1 {
+		if self.tokens[i].group > max_group {
+			max_group = self.tokens[i].group
+		}
+		if self.tokens[i].group < min_group {
+			min_group = self.tokens[i].group
+		}
+	}
+
+	for i := min_group; i <= max_group; i += 1 {
+		_parse_expression(self, begin, end, i) or_return
 	}
 
 	return .Ok
@@ -360,7 +376,7 @@ _find_expression :: proc(self: ^Sql_Parser, allow_star: bool) -> (level: int, re
 			/* if this is a subquery const, we want to
 			 * break out of this loop all together
 			 */
-			if self.tokens[self.curr].type == .Select {
+			if self.tokens[next].type == .Select {
 				break
 			}
 			level += 1
@@ -372,14 +388,9 @@ _find_expression :: proc(self: ^Sql_Parser, allow_star: bool) -> (level: int, re
 	}
 
 	state := _Expr_State.Expect_Val
-	min_group := 10000 /* lol */
 	in_expr := true
 	begin := self.curr
 
-	/* Expressions require 2 passes. This is the first pass
-	 * where we loop through each token and assign it a group.
-	 * The group is based on the level of parentheses.
-	 */
 	for self.tokens[self.curr].type != .Query_End {
 		next_state := _Expr_State.None
 		switch state {
@@ -447,10 +458,10 @@ _find_expression :: proc(self: ^Sql_Parser, allow_star: bool) -> (level: int, re
 					in_expr = false
 				} else {
 					if level-1 < lowest_exit_level {
-						level -= 1
 						lowest_exit_level -= 1
 						pop(&first_token_vec)
 					}
+					level -= 1
 					next_state = .Expect_Op_Or_End
 				}
 			case .Sym_Dot:
@@ -491,12 +502,6 @@ _find_expression :: proc(self: ^Sql_Parser, allow_star: bool) -> (level: int, re
 
 		state = next_state
 
-		if int(self.tokens[self.curr].group) < min_group &&
-		    self.tokens[self.curr].type != .Sym_Lparen &&
-		    self.tokens[self.curr].type != .Sym_Rparen {
-			min_group = int(self.tokens[self.curr].group)
-		}
-
 		_get_next_token(self)
 	}
 
@@ -507,15 +512,12 @@ _find_expression :: proc(self: ^Sql_Parser, allow_star: bool) -> (level: int, re
 		return 0, parse_error(self, "unexpected end of expression")
 	}
 
-	/* Only used when calling _parse_expression non-recursively */
-	self.tokens[begin].min_grp = u32(min_group)
-
 	return level, .Ok
 }
 
 /* Should not discover any syntax errors at this point */
 @(private)
-_is_a_single_boolean_expression :: proc (self: ^Sql_Parser, begin, end: u32) -> bool {
+_is_single_boolean_expression :: proc (self: ^Sql_Parser, begin, end: u32) -> bool {
 	begin := begin
 
 	/* Find beginning of left side expression */
@@ -588,8 +590,8 @@ _parse_send_predicate :: proc(self: ^Sql_Parser, begin: u32) -> Sql_Result {
 		_get_next_token(self, &begin); /* begin now pointing at right side expr */
 		left_tok := self.tokens[left]
 		begin_tok := self.tokens[begin]
-		_parse_expression(self, left, left_tok.end_expr, int(left_tok.min_grp)) or_return
-		_parse_expression(self, begin, begin_tok.end_expr, int(begin_tok.min_grp)) or_return
+		_parse_expression_runner(self, left, left_tok.end_expr) or_return
+		_parse_expression_runner(self, begin, begin_tok.end_expr) or_return
 		parse_leave_predicate(self, &self.tokens[oper])
 	case .In:
 		fallthrough
@@ -604,19 +606,7 @@ _parse_send_predicate :: proc(self: ^Sql_Parser, begin: u32) -> Sql_Result {
 }
 
 @(private)
-_parse_boolean_expression :: proc(self: ^Sql_Parser, begin, end: u32, min_group: int) -> Sql_Result {
-	/* If we don't accomplish anything, someone wrote
-	 * something dumb like `select 1 where (1=1)`. We
-	 * will need to re-enter this function with min_group
-	 * set to -1.
-	 */
-	did_some_breakdown : bool
-
-	curr_group := self.tokens[begin].group
-	if min_group != -1 {
-		curr_group = u32(min_group)
-	}
-
+_parse_boolean_expression :: proc(self: ^Sql_Parser, begin, end: u32, group: u16) -> Sql_Result {
 	begin := begin
 	end := end
 
@@ -629,23 +619,22 @@ _parse_boolean_expression :: proc(self: ^Sql_Parser, begin, end: u32, min_group:
 	}
 
 	/* Shortcut for leaf node */
-	if _is_a_single_boolean_expression(self, begin, end) {
+	if _is_single_boolean_expression(self, begin, end) {
 		return _parse_send_predicate(self, begin)
 	}
 
 
 	/* First, split on OR */
 	for i := begin; i != end; i += 1 {
-		if self.tokens[i].done || self.tokens[i].group != curr_group {
+		if self.tokens[i].done || self.tokens[i].group != group {
 			continue
 		}
 		#partial switch self.tokens[i].type {
 		case .Or:
-			did_some_breakdown = true
 			self.tokens[i].done = true
 			parse_enter_or(self)
-			_parse_boolean_expression(self, begin, i, -1) or_return
-			_parse_boolean_expression(self, i + 1, end, -1) or_return
+			_parse_boolean_expression(self, begin, i, self.tokens[begin].group) or_return
+			_parse_boolean_expression(self, i + 1, end, self.tokens[i+1].group) or_return
 			parse_leave_or(self)
 		case:
 		}
@@ -653,23 +642,38 @@ _parse_boolean_expression :: proc(self: ^Sql_Parser, begin, end: u32, min_group:
 
 	/* Split on AND */
 	for i := begin; i != end; i += 1 {
-		if self.tokens[i].done || self.tokens[i].group != curr_group {
+		if self.tokens[i].done || self.tokens[i].group != group {
 			continue
 		}
 		#partial switch self.tokens[i].type {
 		case .And:
-			did_some_breakdown = true
 			self.tokens[i].done = true
-			parse_enter_or(self)
-			_parse_boolean_expression(self, begin, i, -1) or_return
-			_parse_boolean_expression(self, i + 1, end, -1) or_return
-			parse_leave_or(self)
+			parse_enter_and(self)
+			_parse_boolean_expression(self, begin, i, self.tokens[begin].group) or_return
+			_parse_boolean_expression(self, i + 1, end, self.tokens[i+1].group) or_return
+			parse_leave_and(self)
 		case:
 		}
 	}
 
-	if !did_some_breakdown {
-		return _parse_boolean_expression(self, begin, end, -1)
+	return .Ok
+}
+@(private)
+_parse_boolean_expression_runner :: proc(self: ^Sql_Parser, begin, end: u32) -> Sql_Result {
+	min_group: u16 = bits.U16_MAX
+	max_group: u16 = 0
+
+	for i := begin; i < end; i += 1 {
+		if self.tokens[i].group > max_group {
+			max_group = self.tokens[i].group
+		}
+		if self.tokens[i].group < min_group {
+			min_group = self.tokens[i].group
+		}
+	}
+
+	for i := min_group; i <= max_group; i += 1 {
+		_parse_boolean_expression(self, begin, end, i) or_return
 	}
 
 	return .Ok
@@ -693,7 +697,6 @@ _find_boolean_expression :: proc(self: ^Sql_Parser) -> Sql_Result {
 	begin := self.curr
 
 	level : int
-	min_group := 10000
 	left_side := true
 
 	/* This is very similar to the first pass of _find_expression
@@ -756,17 +759,13 @@ _find_boolean_expression :: proc(self: ^Sql_Parser) -> Sql_Result {
 			}
 			_get_next_token(self)
 		}
-
-		if int(self.tokens[self.curr].group) < min_group {
-			min_group = int(self.tokens[self.curr].group)
-		}
 	}
 
 	if state != .Expect_Logic_Or_End || level != 0 {
 		return parse_error(self, "unexpected end of boolean expression")
 	}
 
-	return _parse_boolean_expression(self, begin, self.curr, min_group)
+	return _parse_boolean_expression_runner(self, begin, self.curr)
 }
 
 @(private)
@@ -932,7 +931,18 @@ _parse_from_stmt :: proc(self: ^Sql_Parser) -> Sql_Result {
 @(private)
 _parse_where_stmt :: proc(self: ^Sql_Parser) -> Sql_Result {
 	_get_next_token_or_die(self) or_return
-	return _find_boolean_expression(self)
+	_find_boolean_expression(self) or_return
+
+	#partial switch self.tokens[self.curr].type {
+	case .Group:
+		return _parse_groupby_stmt(self)
+	case .Having:
+		return _parse_having_stmt(self)
+	case .End_Of_Subquery:
+		return .Ok
+	case:
+		return _parse_enter(self)
+	}
 }
 
 @(private)
@@ -953,10 +963,9 @@ _parse_select_list :: proc(self: ^Sql_Parser) -> Sql_Result {
 		if extra_level > 0 {
 			return parse_error(self, "unmatched '('")
 		}
-		_parse_expression(self,
-		                  expr_begin,
-		                  self.tokens[expr_begin].end_expr,
-		                  int(self.tokens[expr_begin].min_grp)) or_return
+		_parse_expression_runner(self,
+		                         expr_begin,
+		                         self.tokens[expr_begin].end_expr) or_return
 
 		if self.tokens[self.curr].type == .As {
 			_get_next_token_or_die(self) or_return
@@ -1027,10 +1036,9 @@ _parse_select_stmt :: proc(self: ^Sql_Parser) -> Sql_Result {
 			if extra_level > 0 {
 				return parse_error(self, "unmatched '('")
 			}
-			_parse_expression(self,
-			                  expr_begin,
-			                  self.tokens[expr_begin].end_expr,
-			                  int(self.tokens[expr_begin].min_grp)) or_return
+			_parse_expression_runner(self,
+			                         expr_begin,
+			                         self.tokens[expr_begin].end_expr) or_return
 			parse_leave_top_expr(self)
 			all_or_distinct_allowed = false
 			top_allowed = false
@@ -1126,6 +1134,9 @@ _parse_enter :: proc(self: ^Sql_Parser) -> Sql_Result {
 	if self.tokens[self.curr].type == .Query_End {
 		return .Ok
 	}
+
+	self.q_count += 1
+
 	#partial switch self.tokens[self.curr].type {
 	case .Query_Name:
 		return _parse_execute_stmt(self)
@@ -1164,8 +1175,10 @@ _parse_enter :: proc(self: ^Sql_Parser) -> Sql_Result {
 	case .Raiserror:
 		return _parse_raiserror_stmt(self)
 	case:
+		self.q_count -= 1
 		return parse_error(self, "unexpected token")
 	}
+	self.q_count -= 1
 	return .Ok
 }
 
@@ -1221,9 +1234,11 @@ parse_error :: proc(self: ^Sql_Parser, msg: string) -> Sql_Result {
 
 parse_parse :: proc(self: ^Sql_Parser, query_str: string) -> Sql_Result {
 	self.q = query_str
-	lex_lex(self) or_return
+	self.q_count = 0
 
+	lex_lex(self) or_return
 	self.curr = 0
+
 	if _get_next_token(self) {
 		return .Ok
 	}
@@ -1257,9 +1272,6 @@ parse_error_check :: proc (t: ^testing.T) {
 	ret = parse_parse(&parser, "select 1(55+2)")
 	testing.expect_value(t, ret, Sql_Result.Error)
 
-	ret = parse_parse(&parser, "select (select 1 from foo) [my alias]")
-	testing.expect_value(t, ret, Sql_Result.Error)
-
 	ret = parse_parse(&parser, "select from foo")
 	testing.expect_value(t, ret, Sql_Result.Error)
 
@@ -1268,4 +1280,36 @@ parse_error_check :: proc (t: ^testing.T) {
 
 	ret = parse_parse(&parser, "select from foo where 1")
 	testing.expect_value(t, ret, Sql_Result.Error)
+
+	parse_destroy(&parser)
+}
+
+@(test)
+parse_check :: proc (t: ^testing.T) {
+	parser: Sql_Parser
+	parse_init(&parser)
+
+	ret: Sql_Result
+
+	ret = parse_parse(&parser, "select 1 select 1")
+	testing.expect_value(t, ret, Sql_Result.Ok)
+	testing.expect_value(t, parser.q_count, 2)
+
+	ret = parse_parse(&parser, "select (select (select (1+2) from foo)) from (select 3) x")
+	testing.expect_value(t, ret, Sql_Result.Ok)
+	testing.expect_value(t, parser.q_count, 1)
+
+	ret = parse_parse(&parser, "select * from foo f join bar b on f.seq = b.seq where 1=2")
+	testing.expect_value(t, ret, Sql_Result.Ok)
+	testing.expect_value(t, parser.q_count, 1)
+
+	ret = parse_parse(&parser, `
+	    select ((((1+2)*3)/foo) | 1 ) + 2
+	    from foo
+	    where (((((1=1) and 2=2) or 3=3 and 4=4 and 5!=6)))
+	`)
+	testing.expect_value(t, ret, Sql_Result.Ok)
+	testing.expect_value(t, parser.q_count, 1)
+
+	parse_destroy(&parser)
 }

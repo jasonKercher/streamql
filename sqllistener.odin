@@ -30,6 +30,17 @@ parse_send_name :: proc(self: ^Sql_Parser, tok: ^Token, table_name_tok: ^Token) 
 	return .Ok
 }
 
+parse_send_asterisk :: proc(self: ^Sql_Parser, tok: ^Token, table_name_tok: ^Token) -> Sql_Result {
+	if (table_name_tok == nil) {
+		fmt.fprintf(os.stderr, "SEND ASTERISK\n")
+		return .Ok
+	}
+	fmt.fprintf(os.stderr,
+	        "SEND ASTERISK (WITH TABLE %s)\n",
+	        token_to_string(self, table_name_tok))
+	return .Ok
+}
+
 parse_send_variable :: proc(self: ^Sql_Parser, tok: ^Token) -> Sql_Result {
 	fmt.fprintf(os.stderr, "SEND VAR %s\n", token_to_string(self, tok))
 	return .Ok
