@@ -1,4 +1,4 @@
-package streamql
+package util
 
 import "core:os"
 import "core:io"

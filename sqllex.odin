@@ -5,6 +5,7 @@ import "core:fmt"
 import "core:strings"
 import "core:unicode"
 import "core:testing"
+import "util/dynamic_bit_set"
 
 Token :: struct {
 	begin:    u32,
@@ -12,10 +13,9 @@ Token :: struct {
 	end_expr: u32,
 	group:    u16,
 	type:     Token_Type,
-	done:     bool,
 }
 
-Token_Type :: enum {
+Token_Type :: enum u16 {
 	/* Not Keywords */
 	Query_Begin,    /* All parsing begins here... */
 	Query_End,      /*    ... and ends here       */
@@ -227,12 +227,12 @@ Token_Type :: enum {
 	Sym_Line_Comment,
 }
 
-@(private)
+@(private="file")
 _insert_into_map :: proc(self: ^Sql_Parser, key: string, type: Token_Type) {
 	self.tok_map[key] = type
 }
 
-@(private)
+@(private="file")
 _init_map :: proc(self: ^Sql_Parser) {
 	_insert_into_map(self, "abs",          .Abs)
 	_insert_into_map(self, "ascii",        .Ascii)
@@ -424,7 +424,7 @@ _init_map :: proc(self: ^Sql_Parser) {
 	//fmt.fprintf(os.stderr, "mapsize: %d\n", len(self.tok_map))
 }
 
-@(private)
+@(private="file")
 _skip_whitespace :: proc(self: ^Sql_Parser, idx: ^u32)
 {
 	for ; idx^ < u32(len(self.q)) && unicode.is_space(rune(self.q[idx^])); idx^ += 1 {
@@ -434,7 +434,7 @@ _skip_whitespace :: proc(self: ^Sql_Parser, idx: ^u32)
 	}
 }
 
-@(private)
+@(private="file")
 _get_name :: proc(self: ^Sql_Parser, group: int, idx: ^u32) {
 	begin := idx^
 	for ; idx^ < u32(len(self.q)) && (self.q[idx^] == '_' ||
@@ -453,7 +453,7 @@ _get_name :: proc(self: ^Sql_Parser, group: int, idx: ^u32) {
 		    len=idx^-begin })
 }
 
-@(private)
+@(private="file")
 _get_qualified_name :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Result {
 	real_begin := idx^ + 1
 	for ; idx^ < u32(len(self.q)) && self.q[idx^] != ']'; idx^ += 1 {}
@@ -478,7 +478,7 @@ _get_qualified_name :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Res
 	return .Ok
 }
 
-@(private)
+@(private="file")
 _get_numeric :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Result {
 	/* TODO hex check here ? */
 
@@ -509,7 +509,7 @@ _get_numeric :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Result {
 	return .Ok
 }
 
-@(private)
+@(private="file")
 _get_variable :: proc(self: ^Sql_Parser, group: int, idx: ^u32) {
 	begin := idx^
 	idx^ += 1
@@ -526,7 +526,7 @@ _get_variable :: proc(self: ^Sql_Parser, group: int, idx: ^u32) {
 		    len=idx^-begin })
 }
 
-@(private)
+@(private="file")
 _get_block_comment :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Result {
 	
 	begin := idx^
@@ -553,7 +553,7 @@ _get_block_comment :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Resu
 	return .Ok
 }
 
-@(private)
+@(private="file")
 _get_line_comment :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Result {
 	begin := idx^
 	offset := strings.index_byte(self.q[idx^:], '\n')
@@ -574,7 +574,7 @@ _get_line_comment :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Resul
 	return .Ok
 }
 
-@(private)
+@(private="file")
 _get_symbol :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Result {
 	begin := idx^
 	//idx^ += 1
@@ -645,6 +645,7 @@ lex_tokenize :: proc(self: ^Sql_Parser) -> Sql_Result {
 			_get_variable(self, group, &i)
 		case self.q[i] == '(':
 			group += 1
+			dynamic_bit_set.set(&self.consumed, len(self.tokens))
 			append(&group_stack, group)
 			append(&self.tokens, Token {type=.Sym_Lparen, group=u16(group), begin=i, len=1})
 			i += 1
@@ -652,6 +653,7 @@ lex_tokenize :: proc(self: ^Sql_Parser) -> Sql_Result {
 			if len(group_stack) == 1 {
 				return lex_error(self, i, "unmatched ')'")
 			}
+			dynamic_bit_set.set(&self.consumed, len(self.tokens))
 			append(&self.tokens, Token {type=.Sym_Rparen, group=u16(group), begin=i, len=1})
 			i += 1
 			pop(&group_stack)
@@ -694,6 +696,8 @@ lex_lex :: proc (self: ^Sql_Parser) -> Sql_Result {
 
 	resize(&self.tokens, 0)
 	resize(&self.lf_vec, 0)
+	dynamic_bit_set.clear(&self.consumed)
+
 	return lex_tokenize(self)
 }
 

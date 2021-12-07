@@ -2,12 +2,13 @@ package streamql
 
 import "core:os"
 import "getargs"
+import "util"
 
 main :: proc()
 {
 	query_str : string
 
-	argparser := getargs.make_getargs()
+	argparser := getargs.construct()
 	getargs.add_arg(&argparser, "h", "help", getargs.Optarg_Option.None)
 
 	if getargs.get_flag(&argparser, "h") {
@@ -22,12 +23,14 @@ main :: proc()
 			os.write_string(os.stderr, "failed to open file\n")
 		}
 	} else {
-		query_str = stdin_to_string()
+		query_str = util.stdin_to_string()
 	}
 	
 	parser : Sql_Parser
 
 	parse_init(&parser)
-	parse_parse(&parser, query_str)
+	if parse_parse(&parser, query_str) == .Error {
+		os.exit(2)
+	}
 }
 

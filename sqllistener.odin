@@ -170,13 +170,37 @@ parse_leave_where :: proc(self: ^Sql_Parser) -> Sql_Result {
 	return .Ok
 }
 
-parse_enter_predicate :: proc(self: ^Sql_Parser, tok: ^Token) -> Sql_Result {
-	fmt.fprintf(os.stderr, "ENTER PREDICATE %s\n", token_to_string(self, tok))
+parse_enter_predicate :: proc(self: ^Sql_Parser, tok: ^Token, is_not_predicate, is_not: bool) -> Sql_Result {
+	if is_not_predicate {
+		if is_not {
+			fmt.fprintf(os.stderr, "ENTER PREDICATE NOT %s NOT\n", token_to_string(self, tok))
+		} else {
+			fmt.fprintf(os.stderr, "ENTER PREDICATE NOT %s\n", token_to_string(self, tok))
+		}
+	} else {
+		if is_not {
+			fmt.fprintf(os.stderr, "ENTER PREDICATE %s NOT\n", token_to_string(self, tok))
+		} else {
+			fmt.fprintf(os.stderr, "ENTER PREDICATE %s\n", token_to_string(self, tok))
+		}
+	}
 	return .Ok
 }
 
-parse_leave_predicate :: proc(self: ^Sql_Parser, tok: ^Token) -> Sql_Result {
-	fmt.fprintf(os.stderr, "LEAVE PREDICATE %s\n", token_to_string(self, tok))
+parse_leave_predicate :: proc(self: ^Sql_Parser, tok: ^Token, is_not_predicate, is_not: bool) -> Sql_Result {
+	if is_not_predicate {
+		if is_not {
+			fmt.fprintf(os.stderr, "ENTER PREDICATE NOT %s NOT\n", token_to_string(self, tok))
+		} else {
+			fmt.fprintf(os.stderr, "ENTER PREDICATE NOT %s\n", token_to_string(self, tok))
+		}
+	} else {
+		if is_not {
+			fmt.fprintf(os.stderr, "ENTER PREDICATE %s NOT\n", token_to_string(self, tok))
+		} else {
+			fmt.fprintf(os.stderr, "ENTER PREDICATE %s\n", token_to_string(self, tok))
+		}
+	}
 	return .Ok
 }
 
@@ -186,7 +210,7 @@ parse_enter_and :: proc(self: ^Sql_Parser) -> Sql_Result {
 }
 
 parse_leave_and :: proc(self: ^Sql_Parser) -> Sql_Result {
-	fmt.fprintf(os.stderr, "ENTER AND\n")
+	fmt.fprintf(os.stderr, "LEAVE AND\n")
 	return .Ok
 }
 
@@ -197,6 +221,16 @@ parse_enter_or :: proc(self: ^Sql_Parser) -> Sql_Result {
 
 parse_leave_or :: proc(self: ^Sql_Parser) -> Sql_Result {
 	fmt.fprintf(os.stderr, "LEAVE OR\n")
+	return .Ok
+}
+
+parse_enter_not :: proc(self: ^Sql_Parser) -> Sql_Result {
+	fmt.fprintf(os.stderr, "ENTER NOT\n")
+	return .Ok
+}
+
+parse_leave_not :: proc(self: ^Sql_Parser) -> Sql_Result {
+	fmt.fprintf(os.stderr, "LEAVE NOT\n")
 	return .Ok
 }
 

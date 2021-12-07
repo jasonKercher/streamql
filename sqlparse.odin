@@ -3,6 +3,7 @@ package streamql
 import "core:fmt"
 import "core:os"
 import "core:math/bits"
+import "util/dynamic_bit_set"
 
 import "core:testing"
 
@@ -11,6 +12,7 @@ Sql_Parser :: struct {
 	lf_vec:  [dynamic]u32,
 	tokens:  [dynamic]Token,
 	tok_map: map[string]Token_Type,
+	consumed:dynamic_bit_set.Dynamic_Bit_Set,
 	curr:    u32,
 	q_count: u32,
 }
@@ -22,10 +24,28 @@ Func_Group :: enum {
 	Scalar,
 }
 
-@(private)
+@(private="file")
+_get_prev_token_from_here :: proc(self: ^Sql_Parser, here: ^u32) -> bool {
+	i := here^ - 1
+	if i <= 0 {
+		return true
+	}
+	for ; self.tokens[i].type != .Query_Begin && self.tokens[i].type == .Query_Comment; i -= 1 {}
+	here^ = i
+	return self.tokens[i].type == .Query_Begin
+}
+
+@(private="file")
+_peek_prev_token :: proc(self: ^Sql_Parser, i: u32) -> u32 {
+	i := i - 1
+	for ; self.tokens[i].type != .Query_Begin && self.tokens[i].type == .Query_Comment; i -= 1 {}
+	return i
+}
+
+@(private="file")
 _get_next_token :: proc {_get_next_token_from_here, _get_next_token_from_curr}
 
-@(private)
+@(private="file")
 _get_next_token_from_here :: proc(self: ^Sql_Parser, here: ^u32) -> bool {
 	i := here^ + 1
 	if i >= u32(len(self.tokens)) {
@@ -36,7 +56,7 @@ _get_next_token_from_here :: proc(self: ^Sql_Parser, here: ^u32) -> bool {
 	return self.tokens[i].type == .Query_End
 }
 
-@(private)
+@(private="file")
 _get_next_token_from_curr :: proc(self: ^Sql_Parser) -> bool {
 	i := self.curr + 1
 	if i >= u32(len(self.tokens)) {
@@ -47,15 +67,14 @@ _get_next_token_from_curr :: proc(self: ^Sql_Parser) -> bool {
 	return self.tokens[i].type == .Query_End
 }
 
-@(private)
+@(private="file")
 _peek_next_token :: proc(self: ^Sql_Parser, i: u32) -> u32 {
 	i := i + 1
 	for ; self.tokens[i].type != .Query_End && self.tokens[i].type == .Query_Comment; i += 1 {}
 	return i
 }
 
-
-@(private)
+@(private="file")
 _get_next_token_or_die :: proc(self: ^Sql_Parser) -> Sql_Result {
 	if _get_next_token(self) {
 		return parse_error(self, "unexpected EOF")
@@ -63,7 +82,7 @@ _get_next_token_or_die :: proc(self: ^Sql_Parser) -> Sql_Result {
 	return .Ok
 }
 
-@(private)
+@(private="file")
 _get_func_group :: proc(type: Token_Type) -> Func_Group {
 	switch int(type) {
 	case 300..399:
@@ -76,16 +95,19 @@ _get_func_group :: proc(type: Token_Type) -> Func_Group {
 	return .None
 }
 
-@(private)
+@(private="file")
 _send_column_or_const :: proc(self: ^Sql_Parser, begin: u32) -> Sql_Result {
 	tok := &self.tokens[begin]
+	dynamic_bit_set.set(&self.consumed, begin)
 	#partial switch tok.type {
 	case .Sym_Asterisk:
 		return parse_send_asterisk(self, tok, nil)
 	case .Query_Name:
 		next_idx := _peek_next_token(self, begin)
 		if self.tokens[next_idx].type == .Sym_Dot {
+			dynamic_bit_set.set(&self.consumed, next_idx)
 			next_idx = _peek_next_token(self, next_idx)
+			dynamic_bit_set.set(&self.consumed, next_idx)
 			field_name_tok := &self.tokens[next_idx]
 			#partial switch field_name_tok.type {
 			case .Query_Name:
@@ -108,27 +130,27 @@ _send_column_or_const :: proc(self: ^Sql_Parser, begin: u32) -> Sql_Result {
 	}
 }
 
-@(private)
+@(private="file")
 _parse_case_stmt :: proc(self: ^Sql_Parser) -> Sql_Result {
 	return parse_error(self, "case statement parsing incomplete")
 }
 
-@(private)
+@(private="file")
 _parse_function :: proc(self: ^Sql_Parser) -> Sql_Result {
 	return parse_error(self, "function parsing incomplete")
 }
 
-@(private)
+@(private="file")
 _skip_between_stmt :: proc(self: ^Sql_Parser) -> Sql_Result {
 	return parse_error(self, "between skipping incomplete")
 }
 
-@(private)
+@(private="file")
 _skip_expression_list :: proc(self: ^Sql_Parser) -> Sql_Result {
 	return parse_error(self, "expression list skipping incomplete")
 }
 
-@(private)
+@(private="file")
 _skip_subquery :: proc(self: ^Sql_Parser) -> Sql_Result {
 	level := 1
 	for level != 0 {
@@ -152,10 +174,14 @@ _skip_subquery :: proc(self: ^Sql_Parser) -> Sql_Result {
 	return .Ok
 }
 
-@(private)
+@(private="file")
 _is_single_term :: proc(self: ^Sql_Parser, begin, end: u32) -> bool {
 	term_found: bool
 	has_table_name: bool
+
+	//if self.tokens[begin].type == .Sym_Lparen {
+	//	_get_next_token(self)
+	//}
 
 	for begin:= begin; begin != end; begin += 1 {
 		#partial switch self.tokens[begin].type {
@@ -192,31 +218,26 @@ _is_single_term :: proc(self: ^Sql_Parser, begin, end: u32) -> bool {
 	return true
 }
 
-@(private)
+@(private="file")
 _parse_expression :: proc(self: ^Sql_Parser, begin, end: u32, group: u16) -> Sql_Result {
+	group := group
 	begin := begin
 	end := end
 
-	for self.tokens[begin].type == .Sym_Lparen && self.tokens[end-1].type == .Sym_Rparen {
-		begin += 1
-		end -= 1
+	for self.tokens[begin].type == .Sym_Lparen && 
+	     self.tokens[_peek_prev_token(self, end)].type == .Sym_Rparen {
+		_get_next_token(self, &begin)
+		_get_prev_token_from_here(self, &end)
 	}
 
-	group := self.tokens[begin].group
-
-	//for self.tokens[begin].type == .Sym_Lparen || self.tokens[begin].type == .Query_Comment {
-	//	begin += 1
-	//}
-
-	//for self.tokens[end-1].type == .Sym_Rparen || self.tokens[end-1].type == .Query_Comment {
-	//	end -= 1
-	//}
-
-	if self.tokens[begin].type == .Select {
+	if self.tokens[begin].type == .Sym_Lparen && 
+	    self.tokens[_peek_next_token(self, begin)].type == .Select {
 		parse_enter_subquery_const(self)
 
 		curr_bak := self.curr
 		self.curr = begin
+
+		_get_next_token(self)
 
 		ret := _parse_select_stmt(self)
 
@@ -232,7 +253,7 @@ _parse_expression :: proc(self: ^Sql_Parser, begin, end: u32, group: u16) -> Sql
 
 	/* Lowest precedence first */
 	for i := begin; i < end; i += 1 {
-		if self.tokens[i].done || self.tokens[i].group != group {
+		if dynamic_bit_set.get(&self.consumed, i) || self.tokens[i].group != group {
 			continue
 		}
 		#partial switch self.tokens[i].type {
@@ -245,10 +266,10 @@ _parse_expression :: proc(self: ^Sql_Parser, begin, end: u32, group: u16) -> Sql
 		case .Sym_Bit_Or:
 			fallthrough
 		case .Sym_Bit_Xor:
-			self.tokens[i].done = true
+			dynamic_bit_set.set(&self.consumed, i)
 			parse_enter_function(self, &self.tokens[i])
-			_parse_expression(self, begin, i, self.tokens[begin].group) or_return
-			_parse_expression(self, i + 1, end, self.tokens[i+1].group) or_return
+			_parse_expression_runner(self, begin, i) or_return
+			_parse_expression_runner(self, i + 1, end) or_return
 			parse_leave_function(self, &self.tokens[i])
 		case:
 		}
@@ -256,7 +277,7 @@ _parse_expression :: proc(self: ^Sql_Parser, begin, end: u32, group: u16) -> Sql
 
 	/* multiplication derivatives */
 	for i := begin; i < end; i += 1 {
-		if self.tokens[i].done || self.tokens[i].group != group {
+		if dynamic_bit_set.get(&self.consumed, i) || self.tokens[i].group != group {
 			continue
 		}
 		#partial switch self.tokens[i].type {
@@ -265,10 +286,10 @@ _parse_expression :: proc(self: ^Sql_Parser, begin, end: u32, group: u16) -> Sql
 		case .Sym_Divide:
 			fallthrough
 		case .Sym_Modulus:
-			self.tokens[i].done = true
+			dynamic_bit_set.set(&self.consumed, i)
 			parse_enter_function(self, &self.tokens[i])
-			_parse_expression(self, begin, i, self.tokens[begin].group) or_return
-			_parse_expression(self, i + 1, end, self.tokens[i+1].group) or_return
+			_parse_expression_runner(self, begin, i) or_return
+			_parse_expression_runner(self, i + 1, end) or_return
 			parse_leave_function(self, &self.tokens[i])
 		case:
 		}
@@ -276,7 +297,7 @@ _parse_expression :: proc(self: ^Sql_Parser, begin, end: u32, group: u16) -> Sql
 
 	/* unary expressions */
 	for i := begin; i < end; i += 1 {
-		if self.tokens[i].done || self.tokens[i].group != group {
+		if dynamic_bit_set.get(&self.consumed, i) || self.tokens[i].group != group {
 			continue
 		}
 		#partial switch self.tokens[i].type {
@@ -285,9 +306,9 @@ _parse_expression :: proc(self: ^Sql_Parser, begin, end: u32, group: u16) -> Sql
 		case .Sym_Minus_Unary:
 			fallthrough
 		case .Sym_Bit_Not_Unary:
-			self.tokens[i].done = true
+			dynamic_bit_set.set(&self.consumed, i)
 			parse_enter_function(self, &self.tokens[i])
-			_parse_expression(self, i + 1, end, self.tokens[i+1].group) or_return
+			_parse_expression_runner(self, i + 1, end) or_return
 			parse_leave_function(self, &self.tokens[i])
 		case:
 		}
@@ -295,22 +316,22 @@ _parse_expression :: proc(self: ^Sql_Parser, begin, end: u32, group: u16) -> Sql
 
 	/* case expressions */
 	for i := begin; i < end; i += 1 {
-		if self.tokens[i].done || self.tokens[i].group != group {
+		if dynamic_bit_set.get(&self.consumed, i) || self.tokens[i].group != group {
 			continue
 		}
 		if self.tokens[i].type == .Case {
-			self.tokens[i].done = true
+			dynamic_bit_set.set(&self.consumed, i)
 			_parse_case_stmt(self) or_return
 		}
 	}
 
 	/* functions */
 	for i := begin; i != end; i += 1 {
-		if self.tokens[i].done || self.tokens[i].group != group {
+		if dynamic_bit_set.get(&self.consumed, i) || self.tokens[i].group != group {
 			continue
 		}
 		if self.tokens[i].type == .Case {
-			self.tokens[i].done = true
+			dynamic_bit_set.set(&self.consumed, i)
 			_parse_function(self) or_return
 		}
 	}
@@ -318,7 +339,7 @@ _parse_expression :: proc(self: ^Sql_Parser, begin, end: u32, group: u16) -> Sql
 	return .Ok
 }
 
-@(private)
+@(private="file")
 _parse_expression_runner :: proc(self: ^Sql_Parser, begin, end: u32) -> Sql_Result {
 	min_group: u16 = bits.U16_MAX
 	max_group: u16 = 0
@@ -339,7 +360,7 @@ _parse_expression_runner :: proc(self: ^Sql_Parser, begin, end: u32) -> Sql_Resu
 	return .Ok
 }
 
-@(private)
+@(private="file")
 _Expr_State :: enum {
 	None,
 	Expect_Op_Or_End,
@@ -348,7 +369,7 @@ _Expr_State :: enum {
 	In_Case,
 }
 
-@(private)
+@(private="file")
 _find_expression :: proc(self: ^Sql_Parser, allow_star: bool) -> (level: int, ret: Sql_Result) {
 	/* This variable represents the lowest legal level
 	 * for exiting the expression.  It is required for
@@ -369,9 +390,10 @@ _find_expression :: proc(self: ^Sql_Parser, allow_star: bool) -> (level: int, re
 	first_token_vec := make([dynamic]u32)
 	defer delete(first_token_vec)
 
-	for self.tokens[self.curr].type != .Query_End  {
+	loop: for self.tokens[self.curr].type != .Query_End  {
 		append(&first_token_vec, self.curr)
-		if self.tokens[self.curr].type == .Sym_Lparen {
+		#partial switch self.tokens[self.curr].type {
+		case .Sym_Lparen:
 			next := _peek_next_token(self, self.curr)
 			/* if this is a subquery const, we want to
 			 * break out of this loop all together
@@ -381,8 +403,9 @@ _find_expression :: proc(self: ^Sql_Parser, allow_star: bool) -> (level: int, re
 			}
 			level += 1
 			lowest_exit_level += 1
-		} else {
-			break
+		case .Not:
+		case:
+			break loop
 		}
 		_get_next_token(self)
 	}
@@ -398,6 +421,9 @@ _find_expression :: proc(self: ^Sql_Parser, allow_star: bool) -> (level: int, re
 			may_be_function := true
 
 			#partial switch self.tokens[self.curr].type {
+			case .Not: /* If we were sent here from _parse_boolean... */
+				next_state = .Expect_Val
+				pop(&first_token_vec)
 			case .Sym_Multiply:
 				if !allow_star {
 					return 0, parse_error(self, "unexpected token")
@@ -516,7 +542,7 @@ _find_expression :: proc(self: ^Sql_Parser, allow_star: bool) -> (level: int, re
 }
 
 /* Should not discover any syntax errors at this point */
-@(private)
+@(private="file")
 _is_single_boolean_expression :: proc (self: ^Sql_Parser, begin, end: u32) -> bool {
 	begin := begin
 
@@ -526,6 +552,10 @@ _is_single_boolean_expression :: proc (self: ^Sql_Parser, begin, end: u32) -> bo
 	begin = self.tokens[begin].end_expr - 1 /* Back the fuck up */
 
 	_get_next_token(self, &begin)
+
+	if self.tokens[begin].type == .Not {
+		_get_next_token(self, &begin)
+	}
 
 	/* We should now be ON an comparison operator */
 	#partial switch self.tokens[begin].type {
@@ -558,9 +588,17 @@ _is_single_boolean_expression :: proc (self: ^Sql_Parser, begin, end: u32) -> bo
 	return self.tokens[begin].end_expr >= end
 }
 
-@(private)
+@(private="file")
 _parse_send_predicate :: proc(self: ^Sql_Parser, begin: u32) -> Sql_Result {
 	begin := begin
+
+	not_count := 0   /* Number of NOTs before predicate */
+
+	for self.tokens[begin].type == .Not {
+		not_count += 1
+		dynamic_bit_set.set(&self.consumed, begin)
+		_get_next_token(self, &begin)
+	}
 
 	/* Find beginning of left side expression */
 	for ; self.tokens[begin].end_expr == 0; begin += 1 {}
@@ -569,7 +607,18 @@ _parse_send_predicate :: proc(self: ^Sql_Parser, begin: u32) -> Sql_Result {
 	begin = self.tokens[begin].end_expr - 1; /* Back the fuck up */
 
 	_get_next_token(self, &begin)
+
+	/* only for NOT IN/LIKE/BETWEEN */
+	is_not := self.tokens[begin].type == .Not
+	if is_not {
+		dynamic_bit_set.set(&self.consumed, begin)
+		_get_next_token(self, &begin)
+	}
+
 	oper := begin
+
+	/* only for leading NOTs */
+	is_not_predicate := not_count % 2 == 1
 
 	/* We should now be ON an comparison operator */
 	#partial switch self.tokens[oper].type {
@@ -584,19 +633,24 @@ _parse_send_predicate :: proc(self: ^Sql_Parser, begin: u32) -> Sql_Result {
 	case .Sym_Lt:
 		fallthrough
 	case .Sym_Le:
+		if is_not {
+			return parse_error(self, "unexpected NOT")
+		}
 		fallthrough
 	case .Like:
-		parse_enter_predicate(self, &self.tokens[oper])
+		dynamic_bit_set.set(&self.consumed, oper)
+		parse_enter_predicate(self, &self.tokens[oper], is_not_predicate, is_not)
 		_get_next_token(self, &begin); /* begin now pointing at right side expr */
 		left_tok := self.tokens[left]
 		begin_tok := self.tokens[begin]
 		_parse_expression_runner(self, left, left_tok.end_expr) or_return
 		_parse_expression_runner(self, begin, begin_tok.end_expr) or_return
-		parse_leave_predicate(self, &self.tokens[oper])
+		parse_leave_predicate(self, &self.tokens[oper], is_not_predicate, is_not)
 	case .In:
 		fallthrough
 	case .Between:
 		/* TODO */
+		dynamic_bit_set.set(&self.consumed, self.curr)
 		return parse_error(self, "in/between current incomplete")
 	case:
 		return parse_error(self, "unexpected token in predicate")
@@ -605,17 +659,15 @@ _parse_send_predicate :: proc(self: ^Sql_Parser, begin: u32) -> Sql_Result {
 	return .Ok
 }
 
-@(private)
+@(private="file")
 _parse_boolean_expression :: proc(self: ^Sql_Parser, begin, end: u32, group: u16) -> Sql_Result {
 	begin := begin
 	end := end
 
-	for self.tokens[begin].type == .Sym_Lparen || self.tokens[begin].type == .Query_Comment {
-		begin += 1
-	}
-
-	for self.tokens[end].type == .Sym_Rparen || self.tokens[end].type == .Query_Comment {
-		end -= 1
+	for self.tokens[begin].type == .Sym_Lparen && 
+	    self.tokens[_peek_prev_token(self, end)].type == .Sym_Rparen {
+		_get_next_token(self, &begin)
+		_get_prev_token_from_here(self, &end)
 	}
 
 	/* Shortcut for leaf node */
@@ -623,18 +675,17 @@ _parse_boolean_expression :: proc(self: ^Sql_Parser, begin, end: u32, group: u16
 		return _parse_send_predicate(self, begin)
 	}
 
-
 	/* First, split on OR */
 	for i := begin; i != end; i += 1 {
-		if self.tokens[i].done || self.tokens[i].group != group {
+		if dynamic_bit_set.get(&self.consumed, i) || self.tokens[i].group != group {
 			continue
 		}
 		#partial switch self.tokens[i].type {
 		case .Or:
-			self.tokens[i].done = true
+			dynamic_bit_set.set(&self.consumed, i)
 			parse_enter_or(self)
-			_parse_boolean_expression(self, begin, i, self.tokens[begin].group) or_return
-			_parse_boolean_expression(self, i + 1, end, self.tokens[i+1].group) or_return
+			_parse_boolean_expression_runner(self, begin, i) or_return
+			_parse_boolean_expression_runner(self, i + 1, end) or_return
 			parse_leave_or(self)
 		case:
 		}
@@ -642,23 +693,38 @@ _parse_boolean_expression :: proc(self: ^Sql_Parser, begin, end: u32, group: u16
 
 	/* Split on AND */
 	for i := begin; i != end; i += 1 {
-		if self.tokens[i].done || self.tokens[i].group != group {
+		if dynamic_bit_set.get(&self.consumed, i) || self.tokens[i].group != group {
 			continue
 		}
 		#partial switch self.tokens[i].type {
 		case .And:
-			self.tokens[i].done = true
+			dynamic_bit_set.set(&self.consumed, i)
 			parse_enter_and(self)
-			_parse_boolean_expression(self, begin, i, self.tokens[begin].group) or_return
-			_parse_boolean_expression(self, i + 1, end, self.tokens[i+1].group) or_return
+			_parse_boolean_expression_runner(self, begin, i) or_return
+			_parse_boolean_expression_runner(self, i + 1, end) or_return
 			parse_leave_and(self)
+		case:
+		}
+	}
+
+	/* Split on NOT */
+	for i := begin; i != end; i += 1 {
+		if dynamic_bit_set.get(&self.consumed, i) || self.tokens[i].group != group {
+			continue
+		}
+		#partial switch self.tokens[i].type {
+		case .Not:
+			dynamic_bit_set.set(&self.consumed, i)
+			parse_enter_not(self)
+			_parse_boolean_expression_runner(self, i + 1, end) or_return
+			parse_leave_not(self)
 		case:
 		}
 	}
 
 	return .Ok
 }
-@(private)
+@(private="file")
 _parse_boolean_expression_runner :: proc(self: ^Sql_Parser, begin, end: u32) -> Sql_Result {
 	min_group: u16 = bits.U16_MAX
 	max_group: u16 = 0
@@ -683,16 +749,17 @@ _parse_boolean_expression_runner :: proc(self: ^Sql_Parser, begin, end: u32) -> 
  *       this becomes quite difficult when I don't know where an
  *       expression ends...
  */
-@(private)
+@(private="file")
 _bool_state :: enum {
 	Expect_Logic_Or_End,
 	Expect_Expression,
+	Expect_Expression_Or_Not,
 	Expect_Comparison,
 }
 
-@(private)
+@(private="file")
 _find_boolean_expression :: proc(self: ^Sql_Parser) -> Sql_Result {
-	state := _bool_state.Expect_Expression
+	state := _bool_state.Expect_Expression_Or_Not
 
 	begin := self.curr
 
@@ -706,6 +773,12 @@ _find_boolean_expression :: proc(self: ^Sql_Parser) -> Sql_Result {
 	 */
 	loop: for self.tokens[self.curr].type != .Query_End {
 		switch state {
+		case .Expect_Expression_Or_Not:
+			if self.tokens[self.curr].type == .Not {
+				_get_next_token(self)
+				continue
+			}
+			fallthrough
 		case .Expect_Expression:
 			curr_token := self.curr
 			extra_level := _find_expression(self, false) or_return
@@ -721,6 +794,8 @@ _find_boolean_expression :: proc(self: ^Sql_Parser) -> Sql_Result {
 			left_side = !left_side
 		case .Expect_Comparison:
 			#partial switch self.tokens[self.curr].type {
+			case .Not:
+				_get_next_token_or_die(self) or_return
 			case .Sym_Eq:
 				fallthrough
 			case .Sym_Ne:
@@ -752,7 +827,7 @@ _find_boolean_expression :: proc(self: ^Sql_Parser) -> Sql_Result {
 			case .And:
 				fallthrough
 			case .Or:
-				state = .Expect_Expression
+				state = .Expect_Expression_Or_Not
 			case:
 				//return parse_error(self, "unexpected token")
 				break loop
@@ -768,12 +843,12 @@ _find_boolean_expression :: proc(self: ^Sql_Parser) -> Sql_Result {
 	return _parse_boolean_expression_runner(self, begin, self.curr)
 }
 
-@(private)
+@(private="file")
 _parse_execute_stmt :: proc(self: ^Sql_Parser) -> Sql_Result {
 	return parse_error(self, "proc execution incomplete")
 }
 
-@(private)
+@(private="file")
 _parse_into_stmt :: proc(self: ^Sql_Parser) -> Sql_Result {
 	_get_next_token_or_die(self) or_return
 	parse_send_into_name(self, &self.tokens[self.curr]) or_return
@@ -797,7 +872,7 @@ _parse_into_stmt :: proc(self: ^Sql_Parser) -> Sql_Result {
 	}
 }
 
-@(private)
+@(private="file")
 _parse_subquery_source :: proc(self: ^Sql_Parser) -> Sql_Result {
 	parse_enter_subquery_source(self)
 
@@ -819,7 +894,7 @@ _parse_subquery_source :: proc(self: ^Sql_Parser) -> Sql_Result {
 	return ret
 }
 
-@(private)
+@(private="file")
 _parse_source_item :: proc(self: ^Sql_Parser) -> Sql_Result {
 	_get_next_token_or_die(self) or_return
 
@@ -828,12 +903,14 @@ _parse_source_item :: proc(self: ^Sql_Parser) -> Sql_Result {
 	case .Query_Name:
 		fallthrough
 	case .Query_Variable:
+		dynamic_bit_set.set(&self.consumed, self.curr)
 		parse_send_table_source(self, &self.tokens[self.curr])
 	case .Sym_Lparen:
 		_get_next_token_or_die(self) or_return
 		if self.tokens[self.curr].type != .Select {
 			return parse_error(self, "expected subquery")
 		}
+		dynamic_bit_set.set(&self.consumed, self.curr)
 		_parse_subquery_source(self)
 	case:
 		return parse_error(self, "unexpected token")
@@ -845,24 +922,26 @@ _parse_source_item :: proc(self: ^Sql_Parser) -> Sql_Result {
 
 	/* check for alias */
 	if self.tokens[self.curr].type == .As {
+		dynamic_bit_set.set(&self.consumed, self.curr)
 		_get_next_token_or_die(self) or_return
 	}
 
 	if self.tokens[self.curr].type == .Query_Name ||
 	    self.tokens[self.curr].type == .Query_Variable {
+		dynamic_bit_set.set(&self.consumed, self.curr)
 		parse_send_source_alias(self, &self.tokens[self.curr])
-		if _get_next_token(self) {
-			return .Ok
-		}
+		_get_next_token(self)
 	}
 
 	return .Ok
 }
 
-@(private)
+@(private="file")
 _parse_from_stmt :: proc(self: ^Sql_Parser) -> Sql_Result {
 	parse_enter_from(self)
 	in_source_list := true
+
+	dynamic_bit_set.set(&self.consumed, self.curr)
 
 	_parse_source_item(self) or_return
 
@@ -883,14 +962,18 @@ _parse_from_stmt :: proc(self: ^Sql_Parser) -> Sql_Result {
 			expect_on = true
 			fallthrough
 		case .Cross:
+			dynamic_bit_set.set(&self.consumed, self.curr)
 			_get_next_token_or_die(self) or_return
+			dynamic_bit_set.set(&self.consumed, self.curr)
 			if self.tokens[self.curr].type != .Join {
 				return parse_error(self, "expected JOIN")
 			}
 		case .Join:
+			dynamic_bit_set.set(&self.consumed, self.curr)
 			self.tokens[join_type_idx].type = .Inner
 			expect_on = true
 		case .Sym_Comma: /* cross join */
+			dynamic_bit_set.set(&self.consumed, self.curr)
 			self.tokens[join_type_idx].type = .Cross
 		case:
 			in_source_list = false
@@ -907,6 +990,7 @@ _parse_from_stmt :: proc(self: ^Sql_Parser) -> Sql_Result {
 			if self.tokens[self.curr].type != .On {
 				return parse_error(self, "expected ON")
 			}
+			dynamic_bit_set.set(&self.consumed, self.curr)
 			_get_next_token_or_die(self) or_return
 			_find_boolean_expression(self) or_return
 		}
@@ -928,8 +1012,9 @@ _parse_from_stmt :: proc(self: ^Sql_Parser) -> Sql_Result {
 	}
 }
 
-@(private)
+@(private="file")
 _parse_where_stmt :: proc(self: ^Sql_Parser) -> Sql_Result {
+	dynamic_bit_set.set(&self.consumed, self.curr)
 	_get_next_token_or_die(self) or_return
 	_find_boolean_expression(self) or_return
 
@@ -945,17 +1030,17 @@ _parse_where_stmt :: proc(self: ^Sql_Parser) -> Sql_Result {
 	}
 }
 
-@(private)
+@(private="file")
 _parse_groupby_stmt :: proc(self: ^Sql_Parser) -> Sql_Result {
 	return parse_error(self, "group by incomplete")
 }
 
-@(private)
+@(private="file")
 _parse_having_stmt :: proc(self: ^Sql_Parser) -> Sql_Result {
 	return parse_error(self, "having incomplete")
 }
 
-@(private)
+@(private="file")
 _parse_select_list :: proc(self: ^Sql_Parser) -> Sql_Result {
 	for {
 		expr_begin := self.curr
@@ -980,6 +1065,7 @@ _parse_select_list :: proc(self: ^Sql_Parser) -> Sql_Result {
 
 		#partial switch self.tokens[self.curr].type {
 		case .Sym_Comma:
+			dynamic_bit_set.set(&self.consumed, self.curr)
 			_get_next_token_or_die(self) or_return
 		case .Into:
 			return _parse_into_stmt(self)
@@ -1000,10 +1086,10 @@ _parse_select_list :: proc(self: ^Sql_Parser) -> Sql_Result {
 	return .Ok
 }
 
-
-@(private)
+@(private="file")
 _parse_select_stmt :: proc(self: ^Sql_Parser) -> Sql_Result {
 	parse_send_select_stmt(self)
+	dynamic_bit_set.set(&self.consumed, self.curr)
 	_get_next_token_or_die(self) or_return
 
 	all_or_distinct_allowed := true
@@ -1017,17 +1103,21 @@ _parse_select_stmt :: proc(self: ^Sql_Parser) -> Sql_Result {
 			}
 			/* This is really a no-op anyway... */
 			parse_send_all(self)
+			dynamic_bit_set.set(&self.consumed, self.curr)
 			all_or_distinct_allowed = false
 		case .Distinct:
 			if !all_or_distinct_allowed {
 				return parse_error(self, "unexpected token")
 			}
 			parse_send_distinct(self)
+			dynamic_bit_set.set(&self.consumed, self.curr)
 			all_or_distinct_allowed = false
 		case .Top:
 			if !top_allowed {
 				return parse_error(self, "unexpected token")
 			}
+			dynamic_bit_set.set(&self.consumed, self.curr)
+			
 			_get_next_token_or_die(self) or_return
 			parse_enter_top_expr(self)
 			expr_begin := self.curr
@@ -1049,87 +1139,87 @@ _parse_select_stmt :: proc(self: ^Sql_Parser) -> Sql_Result {
 	return .Ok
 }
 
-@(private)
+@(private="file")
 _parse_delete_stmt :: proc(self: ^Sql_Parser) -> Sql_Result {
 	return parse_error(self, "dead end")
 }
 
-@(private)
+@(private="file")
 _parse_update_stmt :: proc(self: ^Sql_Parser) -> Sql_Result {
 	return parse_error(self, "dead end")
 }
 
-@(private)
+@(private="file")
 _parse_insert_stmt :: proc(self: ^Sql_Parser) -> Sql_Result {
 	return parse_error(self, "not implemented")
 }
 
-@(private)
+@(private="file")
 _parse_alter_stmt :: proc(self: ^Sql_Parser) -> Sql_Result {
 	return parse_error(self, "not implemented")
 }
 
-@(private)
+@(private="file")
 _parse_create_stmt :: proc(self: ^Sql_Parser) -> Sql_Result {
 	return parse_error(self, "not implemented")
 }
 
-@(private)
+@(private="file")
 _parse_drop_stmt :: proc(self: ^Sql_Parser) -> Sql_Result {
 	return parse_error(self, "not implemented")
 }
 
-@(private)
+@(private="file")
 _parse_truncate_stmt :: proc(self: ^Sql_Parser) -> Sql_Result {
 	return parse_error(self, "not implemented")
 }
 
-@(private)
+@(private="file")
 _parse_break_stmt :: proc(self: ^Sql_Parser) -> Sql_Result {
 	return parse_error(self, "not implemented")
 }
 
-@(private)
+@(private="file")
 _parse_continue_stmt :: proc(self: ^Sql_Parser) -> Sql_Result {
 	return parse_error(self, "not implemented")
 }
 
-@(private)
+@(private="file")
 _parse_goto_stmt :: proc(self: ^Sql_Parser) -> Sql_Result {
 	return parse_error(self, "not implemented")
 }
 
-@(private)
+@(private="file")
 _parse_if_stmt :: proc(self: ^Sql_Parser) -> Sql_Result {
 	return parse_error(self, "dead end")
 }
 
-@(private)
+@(private="file")
 _parse_return_stmt :: proc(self: ^Sql_Parser) -> Sql_Result {
 	return parse_error(self, "not implemented")
 }
 
-@(private)
+@(private="file")
 _parse_waitfor_stmt :: proc(self: ^Sql_Parser) -> Sql_Result {
 	return parse_error(self, "not implemented")
 }
 
-@(private)
+@(private="file")
 _parse_while_stmt :: proc(self: ^Sql_Parser) -> Sql_Result {
 	return parse_error(self, "not implemented")
 }
 
-@(private)
+@(private="file")
 _parse_print_stmt :: proc(self: ^Sql_Parser) -> Sql_Result {
 	return parse_error(self, "not implemented")
 }
 
-@(private)
+@(private="file")
 _parse_raiserror_stmt :: proc(self: ^Sql_Parser) -> Sql_Result {
 	return parse_error(self, "not implemented")
 }
 
-@(private)
+@(private="file")
 _parse_enter :: proc(self: ^Sql_Parser) -> Sql_Result {
 	if self.tokens[self.curr].type == .Query_End {
 		return .Ok
@@ -1190,6 +1280,7 @@ parse_init :: proc(self: ^Sql_Parser) {
 		lf_vec = make([dynamic]u32),
 		tokens = make([dynamic]Token),
 		tok_map = make(map[string]Token_Type, 256),
+		consumed = dynamic_bit_set.create(8), /* why arg here? */
 	}
 }
 
@@ -1220,7 +1311,6 @@ token_to_string :: proc(self: ^Sql_Parser, tok: ^Token) -> string {
 	return self.q[tok.begin:tok.begin+tok.len]
 }
 
-
 /********/
 
 parse_error :: proc(self: ^Sql_Parser, msg: string) -> Sql_Result {
@@ -1243,7 +1333,18 @@ parse_parse :: proc(self: ^Sql_Parser, query_str: string) -> Sql_Result {
 		return .Ok
 	}
 
-	return _parse_enter(self)
+	_parse_enter(self) or_return
+
+	self.curr = 0
+
+	for !_get_next_token(self) {
+		if !dynamic_bit_set.get(&self.consumed, self.curr) {
+			parse_error(self, "token not consumed")
+			return .Error
+		}
+	}
+
+	return .Ok
 }
 
 /* Let's fuck this shit up */
@@ -1281,6 +1382,9 @@ parse_error_check :: proc (t: ^testing.T) {
 	ret = parse_parse(&parser, "select from foo where 1")
 	testing.expect_value(t, ret, Sql_Result.Error)
 
+	ret = parse_parse(&parser, "select from foo where 1 not = 1")
+	testing.expect_value(t, ret, Sql_Result.Error)
+
 	parse_destroy(&parser)
 }
 
@@ -1291,22 +1395,22 @@ parse_check :: proc (t: ^testing.T) {
 
 	ret: Sql_Result
 
-	ret = parse_parse(&parser, "select 1 select 1")
+	ret = parse_parse(&parser, "select 1 select /*my*/ 1")
 	testing.expect_value(t, ret, Sql_Result.Ok)
 	testing.expect_value(t, parser.q_count, 2)
 
-	ret = parse_parse(&parser, "select (select (select (1+2) from foo)) from (select 3) x")
+	ret = parse_parse(&parser, "select (select ( /*comments*/ select (1+2) from foo)) /*are*/ from (select 3) /*in*/ x")
 	testing.expect_value(t, ret, Sql_Result.Ok)
 	testing.expect_value(t, parser.q_count, 1)
 
-	ret = parse_parse(&parser, "select * from foo f join bar b on f.seq = b.seq where 1=2")
+	ret = parse_parse(&parser, "select f /*really*/.* /*bad*/ from foo f join bar b on f. /*locations*/seq = b.seq where 1=2")
 	testing.expect_value(t, ret, Sql_Result.Ok)
 	testing.expect_value(t, parser.q_count, 1)
 
 	ret = parse_parse(&parser, `
-	    select ((((1+2)*3)/foo) | 1 ) + 2
-	    from foo
-	    where (((((1=1) and 2=2) or 3=3 and 4=4 and 5!=6)))
+	    select ((((1+2)*3/*what*/)/foo) | 1 ) + 2
+	    from foo -- you
+	    where ((/*think*/(((1=1) and 2=2) or 3=3 and 4=4 and 5!=6)))
 	`)
 	testing.expect_value(t, ret, Sql_Result.Ok)
 	testing.expect_value(t, parser.q_count, 1)
