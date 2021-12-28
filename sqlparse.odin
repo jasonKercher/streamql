@@ -89,7 +89,7 @@ parse_parse :: proc(sql: ^Streamql, query_str: string) -> Sql_Result {
 	p.curr = 0
 
 	for !_get_next_token(p) {
-		if res, ok := bit_array.get(&p.consumed, p.curr); res {
+		if res, ok := bit_array.get(&p.consumed, p.curr); !res || !ok {
 			parse_error(p, "token not consumed")
 			return .Error
 		}
@@ -296,6 +296,15 @@ _is_single_term :: proc(p: ^Sql_Parser, begin, end: u32) -> bool {
 }
 
 @(private="file")
+_token_in_current_expr :: proc(p: ^Sql_Parser, idx: u32, group: u16) -> bool {
+	if p.tokens[idx].group != group {
+		return false
+	}
+	res, ok := bit_array.get(&p.consumed, idx)
+	return !res || !ok
+}
+
+@(private="file")
 _parse_expression :: proc(sql: ^Streamql, begin, end: u32, group: u16) -> Sql_Result {
 	p := &sql.parser
 	group := group
@@ -331,7 +340,7 @@ _parse_expression :: proc(sql: ^Streamql, begin, end: u32, group: u16) -> Sql_Re
 
 	/* Lowest precedence first */
 	for i := begin; i < end; i += 1 {
-		if res, ok := bit_array.get(&p.consumed, i); res || p.tokens[i].group != group {
+		if !_token_in_current_expr(p, i, group) {
 			continue
 		}
 		#partial switch p.tokens[i].type {
@@ -355,7 +364,7 @@ _parse_expression :: proc(sql: ^Streamql, begin, end: u32, group: u16) -> Sql_Re
 
 	/* multiplication derivatives */
 	for i := begin; i < end; i += 1 {
-		if res, ok := bit_array.get(&p.consumed, i); res || p.tokens[i].group != group {
+		if !_token_in_current_expr(p, i, group) {
 			continue
 		}
 		#partial switch p.tokens[i].type {
@@ -375,7 +384,7 @@ _parse_expression :: proc(sql: ^Streamql, begin, end: u32, group: u16) -> Sql_Re
 
 	/* unary expressions */
 	for i := begin; i < end; i += 1 {
-		if res, ok := bit_array.get(&p.consumed, i); res || p.tokens[i].group != group {
+		if !_token_in_current_expr(p, i, group) {
 			continue
 		}
 		#partial switch p.tokens[i].type {
@@ -394,7 +403,7 @@ _parse_expression :: proc(sql: ^Streamql, begin, end: u32, group: u16) -> Sql_Re
 
 	/* case expressions */
 	for i := begin; i < end; i += 1 {
-		if res, ok := bit_array.get(&p.consumed, i); res || p.tokens[i].group != group {
+		if !_token_in_current_expr(p, i, group) {
 			continue
 		}
 		if p.tokens[i].type == .Case {
@@ -405,7 +414,7 @@ _parse_expression :: proc(sql: ^Streamql, begin, end: u32, group: u16) -> Sql_Re
 
 	/* functions */
 	for i := begin; i != end; i += 1 {
-		if res, ok := bit_array.get(&p.consumed, i); res || p.tokens[i].group != group {
+		if !_token_in_current_expr(p, i, group) {
 			continue
 		}
 		if p.tokens[i].type == .Case {
@@ -758,7 +767,7 @@ _parse_boolean_expression :: proc(sql: ^Streamql, begin, end: u32, group: u16) -
 
 	/* First, split on OR */
 	for i := begin; i != end; i += 1 {
-		if res, ok := bit_array.get(&p.consumed, i); res || p.tokens[i].group != group {
+		if !_token_in_current_expr(p, i, group) {
 			continue
 		}
 		#partial switch p.tokens[i].type {
@@ -774,7 +783,7 @@ _parse_boolean_expression :: proc(sql: ^Streamql, begin, end: u32, group: u16) -
 
 	/* Split on AND */
 	for i := begin; i != end; i += 1 {
-		if res, ok := bit_array.get(&p.consumed, i); res || p.tokens[i].group != group {
+		if !_token_in_current_expr(p, i, group) {
 			continue
 		}
 		#partial switch p.tokens[i].type {
@@ -790,7 +799,7 @@ _parse_boolean_expression :: proc(sql: ^Streamql, begin, end: u32, group: u16) -
 
 	/* Split on NOT */
 	for i := begin; i != end; i += 1 {
-		if res, ok := bit_array.get(&p.consumed, i); res || p.tokens[i].group != group {
+		if !_token_in_current_expr(p, i, group) {
 			continue
 		}
 		#partial switch p.tokens[i].type {
