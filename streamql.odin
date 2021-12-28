@@ -8,7 +8,7 @@ main :: proc()
 {
 	query_str : string
 
-	argparser := getargs.construct()
+	argparser := getargs.make_getargs()
 	getargs.add_arg(&argparser, "h", "help", getargs.Optarg_Option.None)
 
 	if getargs.get_flag(&argparser, "h") {
@@ -28,7 +28,7 @@ main :: proc()
 	
 	parser : Sql_Parser
 
-	parse_init(&parser)
+	parse_construct(&parser)
 	if parse_parse(&parser, query_str) == .Error {
 		os.exit(2)
 	}

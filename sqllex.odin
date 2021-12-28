@@ -5,7 +5,7 @@ import "core:fmt"
 import "core:strings"
 import "core:unicode"
 import "core:testing"
-import "util/dynamic_bit_set"
+import "core:container/bit_array"
 
 Token :: struct {
 	begin:    u32,
@@ -225,6 +225,24 @@ Token_Type :: enum u16 {
 	Sym_Semicolon,
 	Sym_Block_Comment,
 	Sym_Line_Comment,
+}
+
+lex_lex :: proc (self: ^Sql_Parser) -> Sql_Result {
+	if len(self.tok_map) == 0 {
+		_init_map(self)
+	}
+
+	resize(&self.tokens, 0)
+	resize(&self.lf_vec, 0)
+	bit_array.clear(&self.consumed)
+
+	return _lex_tokenize(self)
+}
+
+lex_error :: proc(self: ^Sql_Parser, idx: u32, msg: string = "lex error") -> Sql_Result {
+	line, off := parse_get_pos(self, idx)
+	fmt.fprintf(os.stderr, "%s (line: %d, pos: %d)\n", msg, line, off)
+	return .Error
 }
 
 @(private="file")
@@ -616,11 +634,13 @@ _get_symbol :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Result {
 	return .Ok
 }
 
+@(private = "file")
 _is_symbol :: proc(c: u8) -> bool {
 	return strings.index_byte("#()!=+-*/%~|&^.<>,;", c) >= 0
 }
 
-lex_tokenize :: proc(self: ^Sql_Parser) -> Sql_Result {
+@(private = "file")
+_lex_tokenize :: proc(self: ^Sql_Parser) -> Sql_Result {
 	i : u32 = 0
 	append(&self.tokens, Token { type=.Query_Begin })
 
@@ -645,7 +665,7 @@ lex_tokenize :: proc(self: ^Sql_Parser) -> Sql_Result {
 			_get_variable(self, group, &i)
 		case self.q[i] == '(':
 			group += 1
-			dynamic_bit_set.set(&self.consumed, len(self.tokens))
+			bit_array.set(&self.consumed, len(self.tokens))
 			append(&group_stack, group)
 			append(&self.tokens, Token {type=.Sym_Lparen, group=u16(group), begin=i, len=1})
 			i += 1
@@ -653,7 +673,7 @@ lex_tokenize :: proc(self: ^Sql_Parser) -> Sql_Result {
 			if len(group_stack) == 1 {
 				return lex_error(self, i, "unmatched ')'")
 			}
-			dynamic_bit_set.set(&self.consumed, len(self.tokens))
+			bit_array.set(&self.consumed, len(self.tokens))
 			append(&self.tokens, Token {type=.Sym_Rparen, group=u16(group), begin=i, len=1})
 			i += 1
 			pop(&group_stack)
@@ -689,28 +709,10 @@ lex_tokenize :: proc(self: ^Sql_Parser) -> Sql_Result {
 	return .Ok
 }
 
-lex_lex :: proc (self: ^Sql_Parser) -> Sql_Result {
-	if len(self.tok_map) == 0 {
-		_init_map(self)
-	}
-
-	resize(&self.tokens, 0)
-	resize(&self.lf_vec, 0)
-	dynamic_bit_set.clear(&self.consumed)
-
-	return lex_tokenize(self)
-}
-
-lex_error :: proc(self: ^Sql_Parser, idx: u32, msg: string = "lex error") -> Sql_Result {
-	line, off := parse_get_pos(self, idx)
-	fmt.fprintf(os.stderr, "%s (line: %d, pos: %d)\n", msg, line, off)
-	return .Error
-}
-
 @(test)
 lex_error_check :: proc(t: ^testing.T) {
 	parser : Sql_Parser
-	parse_init(&parser)
+	parse_construct(&parser)
 
 	/* Unmatched tokens */
 	parser.q = "select a,b,c,[ntll from foo where 1=1"
@@ -753,7 +755,7 @@ lex_error_check :: proc(t: ^testing.T) {
 @(test)
 lex_check :: proc(t: ^testing.T) {
 	parser : Sql_Parser
-	parse_init(&parser)
+	parse_construct(&parser)
 
 	/* For the following tests...
 	 * len(parser.tokens) = token_count + 2
