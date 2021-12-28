@@ -711,8 +711,7 @@ _lex_tokenize :: proc(self: ^Sql_Parser) -> Sql_Result {
 
 @(test)
 lex_error_check :: proc(t: ^testing.T) {
-	parser : Sql_Parser
-	parse_construct(&parser)
+	parser := make_parser()
 
 	/* Unmatched tokens */
 	parser.q = "select a,b,c,[ntll from foo where 1=1"
@@ -754,8 +753,7 @@ lex_error_check :: proc(t: ^testing.T) {
 
 @(test)
 lex_check :: proc(t: ^testing.T) {
-	parser : Sql_Parser
-	parse_construct(&parser)
+	parser := make_parser()
 
 	/* For the following tests...
 	 * len(parser.tokens) = token_count + 2

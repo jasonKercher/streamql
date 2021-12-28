@@ -1,36 +1,21 @@
 package streamql
 
-import "core:os"
-import "getargs"
-import "util"
+Config :: enum {
+	Parse_Only,
+}
 
-main :: proc()
-{
-	query_str : string
+Streamql :: struct {
+	parser: Sql_Parser,
+	config: bit_set[Config],
+}
 
-	argparser := getargs.make_getargs()
-	getargs.add_arg(&argparser, "h", "help", getargs.Optarg_Option.None)
-
-	if getargs.get_flag(&argparser, "h") {
-		os.write_string(os.stdout, "No help yet")
-		os.exit(0)
-	}
-
-	if len(os.args) > 1 {
-		if buf, ok := os.read_entire_file(os.args[1]); ok {
-			query_str = string(buf)
-		} else {
-			os.write_string(os.stderr, "failed to open file\n")
-		}
-	} else {
-		query_str = util.stdin_to_string()
-	}
-	
-	parser : Sql_Parser
-
-	parse_construct(&parser)
-	if parse_parse(&parser, query_str) == .Error {
-		os.exit(2)
+construct :: proc(self: ^Streamql, cfg: bit_set[Config] = {}) {
+	self^ = {
+		parser = make_parser(),
+		config = cfg,
 	}
 }
 
+destroy :: proc(self: ^Streamql) {
+	parse_destroy(&self.parser)
+}
