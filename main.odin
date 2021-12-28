@@ -10,26 +10,34 @@ main :: proc()
 
 	argparser := getargs.make_getargs()
 	getargs.add_arg(&argparser, "h", "help", getargs.Optarg_Option.None)
+	getargs.add_arg(&argparser, "P", "parse-only", getargs.Optarg_Option.None)
+	getargs.read_args(&argparser, os.args)
 
 	if getargs.get_flag(&argparser, "h") {
 		os.write_string(os.stdout, "No help yet")
 		os.exit(0)
 	}
 
-	if len(os.args) > 1 {
-		if buf, ok := os.read_entire_file(os.args[1]); ok {
+	cfg: bit_set[Config]
+
+	if getargs.get_flag(&argparser, "P") {
+		cfg += {.Parse_Only}
+	}
+
+	if len(os.args) > argparser.arg_idx {
+		if buf, ok := os.read_entire_file(os.args[argparser.arg_idx]); ok {
 			query_str = string(buf)
 		} else {
 			os.write_string(os.stderr, "failed to open file\n")
 		}
+		argparser.arg_idx += 1
 	} else {
 		query_str = util.stdin_to_string()
 	}
 
-	self: Streamql
-	construct(&self, {.Parse_Only})
-	
-	if parse_parse(&self, query_str) == .Error {
+	sql: Streamql
+	construct(&sql, cfg)
+	if exec(&sql, query_str) == .Error {
 		os.exit(2)
 	}
 }

@@ -1346,49 +1346,55 @@ _parse_enter :: proc(sql: ^Streamql) -> Sql_Result {
 
 	p.q_count += 1
 
+	ret : Sql_Result
+
+	parse_enter_sql(sql)
+
 	#partial switch p.tokens[p.curr].type {
 	case .Query_Name:
-		return _parse_execute_stmt(sql)
+		ret = _parse_execute_stmt(sql)
 	case .Select:
-		return _parse_select_stmt(sql)
+		ret = _parse_select_stmt(sql)
 	case .Delete:
-		return _parse_delete_stmt(sql)
+		ret = _parse_delete_stmt(sql)
 	case .Update:
-		return _parse_update_stmt(sql)
+		ret = _parse_update_stmt(sql)
 	case .Insert:
-		return _parse_insert_stmt(sql)
+		ret = _parse_insert_stmt(sql)
 	case .Alter:
-		return _parse_alter_stmt(sql)
+		ret = _parse_alter_stmt(sql)
 	case .Create:
-		return _parse_create_stmt(sql)
+		ret = _parse_create_stmt(sql)
 	case .Drop:
-		return _parse_drop_stmt(sql)
+		ret = _parse_drop_stmt(sql)
 	case .Truncate:
-		return _parse_truncate_stmt(sql)
+		ret = _parse_truncate_stmt(sql)
 	case .Break:
-		return _parse_break_stmt(sql)
+		ret = _parse_break_stmt(sql)
 	case .Continue:
-		return _parse_continue_stmt(sql)
+		ret = _parse_continue_stmt(sql)
 	case .Goto:
-		return _parse_goto_stmt(sql)
+		ret = _parse_goto_stmt(sql)
 	case .If:
-		return _parse_if_stmt(sql)
+		ret = _parse_if_stmt(sql)
 	case .Return:
-		return _parse_return_stmt(sql)
+		ret = _parse_return_stmt(sql)
 	case .Waitfor:
-		return _parse_waitfor_stmt(sql)
+		ret = _parse_waitfor_stmt(sql)
 	case .While:
-		return _parse_while_stmt(sql)
+		ret = _parse_while_stmt(sql)
 	case .Print:
-		return _parse_print_stmt(sql)
+		ret = _parse_print_stmt(sql)
 	case .Raiserror:
-		return _parse_raiserror_stmt(sql)
+		ret = _parse_raiserror_stmt(sql)
 	case:
 		p.q_count -= 1
-		return parse_error(p, "unexpected token")
+		ret = parse_error(p, "unexpected token")
 	}
-	p.q_count -= 1
-	return .Ok
+	
+	parse_leave_sql(sql)
+
+	return ret
 }
 
 /* Let's fuck this shit up */

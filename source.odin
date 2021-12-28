@@ -1,0 +1,4 @@
+package streamql
+
+Source :: struct {
+}

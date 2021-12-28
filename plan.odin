@@ -1,0 +1,4 @@
+package streamql
+
+Plan :: struct {
+}
