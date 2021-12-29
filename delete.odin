@@ -1,0 +1,5 @@
+package streamql
+
+Delete :: struct {
+
+}

@@ -7,7 +7,7 @@ import "core:container/bit_array"
 
 import "core:testing"
 
-Sql_Parser :: struct {
+Parser :: struct {
 	q:       string,
 	lf_vec:  [dynamic]u32,
 	tokens:  [dynamic]Token,
@@ -24,11 +24,11 @@ Func_Group :: enum {
 	Scalar,
 }
 
-make_parser :: proc() -> Sql_Parser {
+make_parser :: proc() -> Parser {
 	/* Current length of token map is 185. Looks like the maps resize
 	 * at 3/4 full, so that puts us at 247 in order to not resize.
 	 */
-	return Sql_Parser {
+	return Parser {
 		lf_vec = make([dynamic]u32),
 		tokens = make([dynamic]Token),
 		tok_map = make(map[string]Token_Type, 256),
@@ -36,13 +36,13 @@ make_parser :: proc() -> Sql_Parser {
 	}
 }
 
-parse_destroy :: proc(p: ^Sql_Parser) {
+parse_destroy :: proc(p: ^Parser) {
 	delete(p.lf_vec)
 	delete(p.tokens)
 	delete(p.tok_map)
 }
 
-parse_get_pos :: proc(p: ^Sql_Parser, idx: u32) -> (line, off: u32) {
+parse_get_pos :: proc(p: ^Parser, idx: u32) -> (line, off: u32) {
 	line = 1
 	for lf in p.lf_vec {
 		if lf > idx {
@@ -55,15 +55,15 @@ parse_get_pos :: proc(p: ^Sql_Parser, idx: u32) -> (line, off: u32) {
 	return
 }
 
-token_get_pos :: proc(p: ^Sql_Parser, tok: ^Token) -> (line, off: u32) {
+token_get_pos :: proc(p: ^Parser, tok: ^Token) -> (line, off: u32) {
 	return parse_get_pos(p, tok.begin)
 }
 
-token_to_string :: proc(p: ^Sql_Parser, tok: ^Token) -> string {
+token_to_string :: proc(p: ^Parser, tok: ^Token) -> string {
 	return p.q[tok.begin:tok.begin+tok.len]
 }
 
-parse_error :: proc(p: ^Sql_Parser, msg: string) -> Sql_Result {
+parse_error :: proc(p: ^Parser, msg: string) -> Result {
 	error_tok := p.tokens[p.curr]
 	error_str := p.q[error_tok.begin:error_tok.begin+error_tok.len]
 	line, off := parse_get_pos(p, p.tokens[p.curr].begin)
@@ -72,7 +72,7 @@ parse_error :: proc(p: ^Sql_Parser, msg: string) -> Sql_Result {
 	return .Error
 }
 
-parse_parse :: proc(sql: ^Streamql, query_str: string) -> Sql_Result {
+parse_parse :: proc(sql: ^Streamql, query_str: string) -> Result {
 	p := &sql.parser
 	p.q = query_str
 	p.q_count = 0
@@ -99,7 +99,7 @@ parse_parse :: proc(sql: ^Streamql, query_str: string) -> Sql_Result {
 }
 
 @(private="file")
-_get_prev_token_from_here :: proc(p: ^Sql_Parser, here: ^u32) -> bool {
+_get_prev_token_from_here :: proc(p: ^Parser, here: ^u32) -> bool {
 	i := here^ - 1
 	if i <= 0 {
 		return true
@@ -110,7 +110,7 @@ _get_prev_token_from_here :: proc(p: ^Sql_Parser, here: ^u32) -> bool {
 }
 
 @(private="file")
-_peek_prev_token :: proc(p: ^Sql_Parser, i: u32) -> u32 {
+_peek_prev_token :: proc(p: ^Parser, i: u32) -> u32 {
 	i := i - 1
 	for ; p.tokens[i].type != .Query_Begin && p.tokens[i].type == .Query_Comment; i -= 1 {}
 	return i
@@ -120,7 +120,7 @@ _peek_prev_token :: proc(p: ^Sql_Parser, i: u32) -> u32 {
 _get_next_token :: proc {_get_next_token_from_here, _get_next_token_from_curr}
 
 @(private="file")
-_get_next_token_from_here :: proc(p: ^Sql_Parser, here: ^u32) -> bool {
+_get_next_token_from_here :: proc(p: ^Parser, here: ^u32) -> bool {
 	i := here^ + 1
 	if i >= u32(len(p.tokens)) {
 		return true
@@ -131,7 +131,7 @@ _get_next_token_from_here :: proc(p: ^Sql_Parser, here: ^u32) -> bool {
 }
 
 @(private="file")
-_get_next_token_from_curr :: proc(p: ^Sql_Parser) -> bool {
+_get_next_token_from_curr :: proc(p: ^Parser) -> bool {
 	i := p.curr + 1
 	if i >= u32(len(p.tokens)) {
 		return true
@@ -142,14 +142,14 @@ _get_next_token_from_curr :: proc(p: ^Sql_Parser) -> bool {
 }
 
 @(private="file")
-_peek_next_token :: proc(p: ^Sql_Parser, i: u32) -> u32 {
+_peek_next_token :: proc(p: ^Parser, i: u32) -> u32 {
 	i := i + 1
 	for ; p.tokens[i].type != .Query_End && p.tokens[i].type == .Query_Comment; i += 1 {}
 	return i
 }
 
 @(private="file")
-_get_next_token_or_die :: proc(p: ^Sql_Parser) -> Sql_Result {
+_get_next_token_or_die :: proc(p: ^Parser) -> Result {
 	if _get_next_token(p) {
 		return parse_error(p, "unexpected EOF")
 	}
@@ -170,7 +170,7 @@ _get_func_group :: proc(type: Token_Type) -> Func_Group {
 }
 
 @(private="file")
-_send_column_or_const :: proc(sql: ^Streamql, begin: u32) -> Sql_Result {
+_send_column_or_const :: proc(sql: ^Streamql, begin: u32) -> Result {
 	p := &sql.parser
 	tok := &p.tokens[begin]
 	bit_array.set(&p.consumed, begin)
@@ -206,29 +206,29 @@ _send_column_or_const :: proc(sql: ^Streamql, begin: u32) -> Sql_Result {
 }
 
 @(private="file")
-_parse_case_stmt :: proc(sql: ^Streamql) -> Sql_Result {
+_parse_case_stmt :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
 	return parse_error(p, "case statement parsing incomplete")
 }
 
 @(private="file")
-_parse_function :: proc(sql: ^Streamql) -> Sql_Result {
+_parse_function :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
 	return parse_error(p, "function parsing incomplete")
 }
 
 @(private="file")
-_skip_between_stmt :: proc(p: ^Sql_Parser) -> Sql_Result {
+_skip_between_stmt :: proc(p: ^Parser) -> Result {
 	return parse_error(p, "between skipping incomplete")
 }
 
 @(private="file")
-_skip_expression_list :: proc(p: ^Sql_Parser) -> Sql_Result {
+_skip_expression_list :: proc(p: ^Parser) -> Result {
 	return parse_error(p, "expression list skipping incomplete")
 }
 
 @(private="file")
-_skip_subquery :: proc(p: ^Sql_Parser) -> Sql_Result {
+_skip_subquery :: proc(p: ^Parser) -> Result {
 	level := 1
 	for level != 0 {
 		_get_next_token_or_die(p) or_return
@@ -252,7 +252,7 @@ _skip_subquery :: proc(p: ^Sql_Parser) -> Sql_Result {
 }
 
 @(private="file")
-_is_single_term :: proc(p: ^Sql_Parser, begin, end: u32) -> bool {
+_is_single_term :: proc(p: ^Parser, begin, end: u32) -> bool {
 	term_found: bool
 	has_table_name: bool
 
@@ -296,7 +296,7 @@ _is_single_term :: proc(p: ^Sql_Parser, begin, end: u32) -> bool {
 }
 
 @(private="file")
-_token_in_current_expr :: proc(p: ^Sql_Parser, idx: u32, group: u16) -> bool {
+_token_in_current_expr :: proc(p: ^Parser, idx: u32, group: u16) -> bool {
 	if p.tokens[idx].group != group {
 		return false
 	}
@@ -305,7 +305,7 @@ _token_in_current_expr :: proc(p: ^Sql_Parser, idx: u32, group: u16) -> bool {
 }
 
 @(private="file")
-_parse_expression :: proc(sql: ^Streamql, begin, end: u32, group: u16) -> Sql_Result {
+_parse_expression :: proc(sql: ^Streamql, begin, end: u32, group: u16) -> Result {
 	p := &sql.parser
 	group := group
 	begin := begin
@@ -427,7 +427,7 @@ _parse_expression :: proc(sql: ^Streamql, begin, end: u32, group: u16) -> Sql_Re
 }
 
 @(private="file")
-_parse_expression_runner :: proc(sql: ^Streamql, begin, end: u32) -> Sql_Result {
+_parse_expression_runner :: proc(sql: ^Streamql, begin, end: u32) -> Result {
 	p := &sql.parser
 	min_group: u16 = bits.U16_MAX
 	max_group: u16 = 0
@@ -458,7 +458,7 @@ _Expr_State :: enum {
 }
 
 @(private="file")
-_find_expression :: proc(p: ^Sql_Parser, allow_star: bool) -> (level: int, ret: Sql_Result) {
+_find_expression :: proc(p: ^Parser, allow_star: bool) -> (level: int, ret: Result) {
 	/* This variable represents the lowest legal level
 	 * for exiting the expression.  It is required for
 	 * expressions like:
@@ -631,7 +631,7 @@ _find_expression :: proc(p: ^Sql_Parser, allow_star: bool) -> (level: int, ret: 
 
 /* Should not discover any syntax errors at this point */
 @(private="file")
-_is_single_boolean_expression :: proc (p: ^Sql_Parser, begin, end: u32) -> bool {
+_is_single_boolean_expression :: proc (p: ^Parser, begin, end: u32) -> bool {
 	begin := begin
 
 	/* Find beginning of left side expression */
@@ -677,7 +677,7 @@ _is_single_boolean_expression :: proc (p: ^Sql_Parser, begin, end: u32) -> bool 
 }
 
 @(private="file")
-_parse_send_predicate :: proc(sql: ^Streamql, begin: u32) -> Sql_Result {
+_parse_send_predicate :: proc(sql: ^Streamql, begin: u32) -> Result {
 	p := &sql.parser
 	begin := begin
 
@@ -749,7 +749,7 @@ _parse_send_predicate :: proc(sql: ^Streamql, begin: u32) -> Sql_Result {
 }
 
 @(private="file")
-_parse_boolean_expression :: proc(sql: ^Streamql, begin, end: u32, group: u16) -> Sql_Result {
+_parse_boolean_expression :: proc(sql: ^Streamql, begin, end: u32, group: u16) -> Result {
 	p := &sql.parser
 	begin := begin
 	end := end
@@ -815,7 +815,7 @@ _parse_boolean_expression :: proc(sql: ^Streamql, begin, end: u32, group: u16) -
 	return .Ok
 }
 @(private="file")
-_parse_boolean_expression_runner :: proc(sql: ^Streamql, begin, end: u32) -> Sql_Result {
+_parse_boolean_expression_runner :: proc(sql: ^Streamql, begin, end: u32) -> Result {
 	p := &sql.parser
 	min_group: u16 = bits.U16_MAX
 	max_group: u16 = 0
@@ -849,7 +849,7 @@ _bool_state :: enum {
 }
 
 @(private="file")
-_find_boolean_expression :: proc(sql: ^Streamql) -> Sql_Result {
+_find_boolean_expression :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
 	state := _bool_state.Expect_Expression_Or_Not
 
@@ -936,13 +936,13 @@ _find_boolean_expression :: proc(sql: ^Streamql) -> Sql_Result {
 }
 
 @(private="file")
-_parse_execute_stmt :: proc(sql: ^Streamql) -> Sql_Result {
+_parse_execute_stmt :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
 	return parse_error(p, "proc execution incomplete")
 }
 
 @(private="file")
-_parse_into_stmt :: proc(sql: ^Streamql) -> Sql_Result {
+_parse_into_stmt :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
 	_get_next_token_or_die(p) or_return
 	parse_send_into_name(sql, &p.tokens[p.curr]) or_return
@@ -967,7 +967,7 @@ _parse_into_stmt :: proc(sql: ^Streamql) -> Sql_Result {
 }
 
 @(private="file")
-_parse_subquery_source :: proc(sql: ^Streamql) -> Sql_Result {
+_parse_subquery_source :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
 	parse_enter_subquery_source(sql)
 
@@ -990,7 +990,7 @@ _parse_subquery_source :: proc(sql: ^Streamql) -> Sql_Result {
 }
 
 @(private="file")
-_parse_source_item :: proc(sql: ^Streamql) -> Sql_Result {
+_parse_source_item :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
 	_get_next_token_or_die(p) or_return
 
@@ -1033,7 +1033,7 @@ _parse_source_item :: proc(sql: ^Streamql) -> Sql_Result {
 }
 
 @(private="file")
-_parse_from_stmt :: proc(sql: ^Streamql) -> Sql_Result {
+_parse_from_stmt :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
 	parse_enter_from(sql)
 	in_source_list := true
@@ -1110,7 +1110,7 @@ _parse_from_stmt :: proc(sql: ^Streamql) -> Sql_Result {
 }
 
 @(private="file")
-_parse_where_stmt :: proc(sql: ^Streamql) -> Sql_Result {
+_parse_where_stmt :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
 	bit_array.set(&p.consumed, p.curr)
 	_get_next_token_or_die(p) or_return
@@ -1129,19 +1129,19 @@ _parse_where_stmt :: proc(sql: ^Streamql) -> Sql_Result {
 }
 
 @(private="file")
-_parse_groupby_stmt :: proc(sql: ^Streamql) -> Sql_Result {
+_parse_groupby_stmt :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
 	return parse_error(p, "group by incomplete")
 }
 
 @(private="file")
-_parse_having_stmt :: proc(sql: ^Streamql) -> Sql_Result {
+_parse_having_stmt :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
 	return parse_error(p, "having incomplete")
 }
 
 @(private="file")
-_parse_select_list :: proc(sql: ^Streamql) -> Sql_Result {
+_parse_select_list :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
 	for {
 		expr_begin := p.curr
@@ -1188,7 +1188,7 @@ _parse_select_list :: proc(sql: ^Streamql) -> Sql_Result {
 }
 
 @(private="file")
-_parse_select_stmt :: proc(sql: ^Streamql) -> Sql_Result {
+_parse_select_stmt :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
 	parse_send_select_stmt(sql)
 	bit_array.set(&p.consumed, p.curr)
@@ -1242,103 +1242,103 @@ _parse_select_stmt :: proc(sql: ^Streamql) -> Sql_Result {
 }
 
 @(private="file")
-_parse_delete_stmt :: proc(sql: ^Streamql) -> Sql_Result {
+_parse_delete_stmt :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
 	return parse_error(p, "dead end")
 }
 
 @(private="file")
-_parse_update_stmt :: proc(sql: ^Streamql) -> Sql_Result {
+_parse_update_stmt :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
 	return parse_error(p, "dead end")
 }
 
 @(private="file")
-_parse_insert_stmt :: proc(sql: ^Streamql) -> Sql_Result {
+_parse_insert_stmt :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
 	return parse_error(p, "not implemented")
 }
 
 @(private="file")
-_parse_alter_stmt :: proc(sql: ^Streamql) -> Sql_Result {
+_parse_alter_stmt :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
 	return parse_error(p, "not implemented")
 }
 
 @(private="file")
-_parse_create_stmt :: proc(sql: ^Streamql) -> Sql_Result {
+_parse_create_stmt :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
 	return parse_error(p, "not implemented")
 }
 
 @(private="file")
-_parse_drop_stmt :: proc(sql: ^Streamql) -> Sql_Result {
+_parse_drop_stmt :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
 	return parse_error(p, "not implemented")
 }
 
 @(private="file")
-_parse_truncate_stmt :: proc(sql: ^Streamql) -> Sql_Result {
+_parse_truncate_stmt :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
 	return parse_error(p, "not implemented")
 }
 
 @(private="file")
-_parse_break_stmt :: proc(sql: ^Streamql) -> Sql_Result {
+_parse_break_stmt :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
 	return parse_error(p, "not implemented")
 }
 
 @(private="file")
-_parse_continue_stmt :: proc(sql: ^Streamql) -> Sql_Result {
+_parse_continue_stmt :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
 	return parse_error(p, "not implemented")
 }
 
 @(private="file")
-_parse_goto_stmt :: proc(sql: ^Streamql) -> Sql_Result {
+_parse_goto_stmt :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
 	return parse_error(p, "not implemented")
 }
 
 @(private="file")
-_parse_if_stmt :: proc(sql: ^Streamql) -> Sql_Result {
+_parse_if_stmt :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
 	return parse_error(p, "dead end")
 }
 
 @(private="file")
-_parse_return_stmt :: proc(sql: ^Streamql) -> Sql_Result {
+_parse_return_stmt :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
 	return parse_error(p, "not implemented")
 }
 
 @(private="file")
-_parse_waitfor_stmt :: proc(sql: ^Streamql) -> Sql_Result {
+_parse_waitfor_stmt :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
 	return parse_error(p, "not implemented")
 }
 
 @(private="file")
-_parse_while_stmt :: proc(sql: ^Streamql) -> Sql_Result {
+_parse_while_stmt :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
 	return parse_error(p, "not implemented")
 }
 
 @(private="file")
-_parse_print_stmt :: proc(sql: ^Streamql) -> Sql_Result {
+_parse_print_stmt :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
 	return parse_error(p, "not implemented")
 }
 
 @(private="file")
-_parse_raiserror_stmt :: proc(sql: ^Streamql) -> Sql_Result {
+_parse_raiserror_stmt :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
 	return parse_error(p, "not implemented")
 }
 
 @(private="file")
-_parse_enter :: proc(sql: ^Streamql) -> Sql_Result {
+_parse_enter :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
 	if p.tokens[p.curr].type == .Query_End {
 		return .Ok
@@ -1346,7 +1346,7 @@ _parse_enter :: proc(sql: ^Streamql) -> Sql_Result {
 
 	p.q_count += 1
 
-	ret : Sql_Result
+	ret : Result
 
 	parse_enter_sql(sql)
 
@@ -1403,37 +1403,37 @@ parse_error_check :: proc (t: ^testing.T) {
 	sql : Streamql
 	construct(&sql)
 
-	ret: Sql_Result
+	ret: Result
 
 	ret = parse_parse(&sql, "select")
-	testing.expect_value(t, ret, Sql_Result.Error)
+	testing.expect_value(t, ret, Result.Error)
 
 	ret = parse_parse(&sql, "select 1 = 2")
-	testing.expect_value(t, ret, Sql_Result.Error)
+	testing.expect_value(t, ret, Result.Error)
 
 	ret = parse_parse(&sql, "select 1 +* 2")
-	testing.expect_value(t, ret, Sql_Result.Error)
+	testing.expect_value(t, ret, Result.Error)
 
 	ret = parse_parse(&sql, "select a,b 34")
-	testing.expect_value(t, ret, Sql_Result.Error)
+	testing.expect_value(t, ret, Result.Error)
 
 	ret = parse_parse(&sql, "select a a a")
-	testing.expect_value(t, ret, Sql_Result.Error)
+	testing.expect_value(t, ret, Result.Error)
 
 	ret = parse_parse(&sql, "select 1(55+2)")
-	testing.expect_value(t, ret, Sql_Result.Error)
+	testing.expect_value(t, ret, Result.Error)
 
 	ret = parse_parse(&sql, "select from foo")
-	testing.expect_value(t, ret, Sql_Result.Error)
+	testing.expect_value(t, ret, Result.Error)
 
 	ret = parse_parse(&sql, "select 1 where 1=1 from foo")
-	testing.expect_value(t, ret, Sql_Result.Error)
+	testing.expect_value(t, ret, Result.Error)
 
 	ret = parse_parse(&sql, "select from foo where 1")
-	testing.expect_value(t, ret, Sql_Result.Error)
+	testing.expect_value(t, ret, Result.Error)
 
 	ret = parse_parse(&sql, "select from foo where 1 not = 1")
-	testing.expect_value(t, ret, Sql_Result.Error)
+	testing.expect_value(t, ret, Result.Error)
 
 	destroy(&sql)
 }
@@ -1445,18 +1445,18 @@ parse_check :: proc (t: ^testing.T) {
 
 	p := &sql.parser
 
-	ret: Sql_Result
+	ret: Result
 
 	ret = parse_parse(&sql, "select 1 select /*my*/ 1")
-	testing.expect_value(t, ret, Sql_Result.Ok)
+	testing.expect_value(t, ret, Result.Ok)
 	testing.expect_value(t, p.q_count, 2)
 
 	ret = parse_parse(&sql, "select (select ( /*comments*/ select (1+2) from foo)) /*are*/ from (select 3) /*in*/ x")
-	testing.expect_value(t, ret, Sql_Result.Ok)
+	testing.expect_value(t, ret, Result.Ok)
 	testing.expect_value(t, p.q_count, 1)
 
 	ret = parse_parse(&sql, "select f /*really*/.* /*bad*/ from foo f join bar b on f. /*locations*/seq = b.seq where 1=2")
-	testing.expect_value(t, ret, Sql_Result.Ok)
+	testing.expect_value(t, ret, Result.Ok)
 	testing.expect_value(t, p.q_count, 1)
 
 	ret = parse_parse(&sql, `
@@ -1464,7 +1464,7 @@ parse_check :: proc (t: ^testing.T) {
 	    from foo -- you
 	    where ((/*think*/(((1=1) and 2=2) or 3=3 and 4=4 and 5!=6)))
 	`)
-	testing.expect_value(t, ret, Sql_Result.Ok)
+	testing.expect_value(t, ret, Result.Ok)
 	testing.expect_value(t, p.q_count, 1)
 
 	destroy(&sql)

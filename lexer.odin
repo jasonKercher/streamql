@@ -227,7 +227,7 @@ Token_Type :: enum u16 {
 	Sym_Line_Comment,
 }
 
-lex_lex :: proc (self: ^Sql_Parser) -> Sql_Result {
+lex_lex :: proc (self: ^Parser) -> Result {
 	if len(self.tok_map) == 0 {
 		_init_map(self)
 	}
@@ -239,19 +239,19 @@ lex_lex :: proc (self: ^Sql_Parser) -> Sql_Result {
 	return _lex_tokenize(self)
 }
 
-lex_error :: proc(self: ^Sql_Parser, idx: u32, msg: string = "lex error") -> Sql_Result {
+lex_error :: proc(self: ^Parser, idx: u32, msg: string = "lex error") -> Result {
 	line, off := parse_get_pos(self, idx)
 	fmt.fprintf(os.stderr, "%s (line: %d, pos: %d)\n", msg, line, off)
 	return .Error
 }
 
 @(private="file")
-_insert_into_map :: proc(self: ^Sql_Parser, key: string, type: Token_Type) {
+_insert_into_map :: proc(self: ^Parser, key: string, type: Token_Type) {
 	self.tok_map[key] = type
 }
 
 @(private="file")
-_init_map :: proc(self: ^Sql_Parser) {
+_init_map :: proc(self: ^Parser) {
 	_insert_into_map(self, "abs",          .Abs)
 	_insert_into_map(self, "ascii",        .Ascii)
 	_insert_into_map(self, "ceiling",      .Ceiling)
@@ -443,7 +443,7 @@ _init_map :: proc(self: ^Sql_Parser) {
 }
 
 @(private="file")
-_skip_whitespace :: proc(self: ^Sql_Parser, idx: ^u32)
+_skip_whitespace :: proc(self: ^Parser, idx: ^u32)
 {
 	for ; idx^ < u32(len(self.q)) && unicode.is_space(rune(self.q[idx^])); idx^ += 1 {
 		if self.q[idx^] == '\n' {
@@ -453,7 +453,7 @@ _skip_whitespace :: proc(self: ^Sql_Parser, idx: ^u32)
 }
 
 @(private="file")
-_get_name :: proc(self: ^Sql_Parser, group: int, idx: ^u32) {
+_get_name :: proc(self: ^Parser, group: int, idx: ^u32) {
 	begin := idx^
 	for ; idx^ < u32(len(self.q)) && (self.q[idx^] == '_' ||
 	      unicode.is_digit(rune(self.q[idx^])) ||
@@ -472,7 +472,7 @@ _get_name :: proc(self: ^Sql_Parser, group: int, idx: ^u32) {
 }
 
 @(private="file")
-_get_qualified_name :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Result {
+_get_qualified_name :: proc(self: ^Parser, group: int, idx: ^u32) -> Result {
 	real_begin := idx^ + 1
 	for ; idx^ < u32(len(self.q)) && self.q[idx^] != ']'; idx^ += 1 {}
 
@@ -497,7 +497,7 @@ _get_qualified_name :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Res
 }
 
 @(private="file")
-_get_numeric :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Result {
+_get_numeric :: proc(self: ^Parser, group: int, idx: ^u32) -> Result {
 	/* TODO hex check here ? */
 
 	begin := idx^
@@ -528,7 +528,7 @@ _get_numeric :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Result {
 }
 
 @(private="file")
-_get_variable :: proc(self: ^Sql_Parser, group: int, idx: ^u32) {
+_get_variable :: proc(self: ^Parser, group: int, idx: ^u32) {
 	begin := idx^
 	idx^ += 1
 
@@ -545,7 +545,7 @@ _get_variable :: proc(self: ^Sql_Parser, group: int, idx: ^u32) {
 }
 
 @(private="file")
-_get_block_comment :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Result {
+_get_block_comment :: proc(self: ^Parser, group: int, idx: ^u32) -> Result {
 	
 	begin := idx^
 
@@ -572,7 +572,7 @@ _get_block_comment :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Resu
 }
 
 @(private="file")
-_get_line_comment :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Result {
+_get_line_comment :: proc(self: ^Parser, group: int, idx: ^u32) -> Result {
 	begin := idx^
 	offset := strings.index_byte(self.q[idx^:], '\n')
 	if offset == -1 {
@@ -593,7 +593,7 @@ _get_line_comment :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Resul
 }
 
 @(private="file")
-_get_symbol :: proc(self: ^Sql_Parser, group: int, idx: ^u32) -> Sql_Result {
+_get_symbol :: proc(self: ^Parser, group: int, idx: ^u32) -> Result {
 	begin := idx^
 	//idx^ += 1
 
@@ -640,7 +640,7 @@ _is_symbol :: proc(c: u8) -> bool {
 }
 
 @(private = "file")
-_lex_tokenize :: proc(self: ^Sql_Parser) -> Sql_Result {
+_lex_tokenize :: proc(self: ^Parser) -> Result {
 	i : u32 = 0
 	append(&self.tokens, Token { type=.Query_Begin })
 
@@ -715,38 +715,38 @@ lex_error_check :: proc(t: ^testing.T) {
 
 	/* Unmatched tokens */
 	parser.q = "select a,b,c,[ntll from foo where 1=1"
-	testing.expect_value(t, lex_lex(&parser), Sql_Result.Error)
+	testing.expect_value(t, lex_lex(&parser), Result.Error)
 
 	parser.q = "select a,b,c,ntll] from foo where 1=1"
-	testing.expect_value(t, lex_lex(&parser), Sql_Result.Error)
+	testing.expect_value(t, lex_lex(&parser), Result.Error)
 
 	parser.q = "select 124+35*24 / (124-2 from [foo] where 1<>2"
-	testing.expect_value(t, lex_lex(&parser), Sql_Result.Error)
+	testing.expect_value(t, lex_lex(&parser), Result.Error)
 
 	parser.q = "select 124+35*24 / (124-2))"
-	testing.expect_value(t, lex_lex(&parser), Sql_Result.Error)
+	testing.expect_value(t, lex_lex(&parser), Result.Error)
 
 	parser.q = "select /* a comment * / 1,2 from foo"
-	testing.expect_value(t, lex_lex(&parser), Sql_Result.Error)
+	testing.expect_value(t, lex_lex(&parser), Result.Error)
 	
 	/* Will throw parser error as multiply, divide */
 	//parser.q = "select / * a comment */ 1,2 from foo"
-	//testing.expect_value(t, lex_lex(&parser), Sql_Result.Error)
+	//testing.expect_value(t, lex_lex(&parser), Result.Error)
 
 	/* Illegal symbols */
 	parser.q = "select $var from foo join foo on 1=1"
-	testing.expect_value(t, lex_lex(&parser), Sql_Result.Error)
+	testing.expect_value(t, lex_lex(&parser), Result.Error)
 
 	parser.q = "select `col` from foo join foo on 1=1"
-	testing.expect_value(t, lex_lex(&parser), Sql_Result.Error)
+	testing.expect_value(t, lex_lex(&parser), Result.Error)
 
 	/* Malformed number */
 	parser.q = "select 1234.1234.1234 from foo join foo on 1=1"
-	testing.expect_value(t, lex_lex(&parser), Sql_Result.Error)
+	testing.expect_value(t, lex_lex(&parser), Result.Error)
 
 	/* Oh shit this is actually legal in SQL Server... */
 	//parser.q = "select 1234shnt from foo join foo on 1=1"
-	//testing.expect_value(t, lex_lex(&parser), Sql_Result.Error)
+	//testing.expect_value(t, lex_lex(&parser), Result.Error)
 
 	parse_destroy(&parser)
 }
@@ -763,7 +763,7 @@ lex_check :: proc(t: ^testing.T) {
 	
 	//         01      2   3    4   5    6   7  890 1
 	parser.q = "select col from foo join foo on 1=1"
-	testing.expect_value(t, lex_lex(&parser), Sql_Result.Ok)
+	testing.expect_value(t, lex_lex(&parser), Result.Ok)
 	testing.expect_value(t, len(parser.tokens), 12)
 	testing.expect_value(t, parser.tokens[0].type, Token_Type.Query_Begin)
 	testing.expect_value(t, parser.tokens[1].type, Token_Type.Select)
@@ -791,7 +791,7 @@ lex_check :: proc(t: ^testing.T) {
 	) f 
 	from (select 1) x
 	`
-	testing.expect_value(t, lex_lex(&parser), Sql_Result.Ok)
+	testing.expect_value(t, lex_lex(&parser), Result.Ok)
 	testing.expect_value(t, len(parser.tokens), 32)
 
 	parse_destroy(&parser)
