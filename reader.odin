@@ -1,0 +1,4 @@
+package streamql
+
+Reader :: struct {
+}

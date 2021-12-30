@@ -1,7 +1,10 @@
 package streamql
 
+import "core:fmt"
+
 Config :: enum {
 	Parse_Only,
+	_Allow_Stdin,
 }
 
 Result :: enum {
@@ -54,6 +57,15 @@ generate_plans :: proc(sql: ^Streamql, query_str: string) -> Result {
 exec :: proc(sql: ^Streamql, query_str: string) -> Result {
 	generate_plans(sql, query_str) or_return
 
+
+	if len(sql.queries) == 0 {
+		return .Ok
+	}
+	q := sql.queries[len(sql.queries) - 1]
+	s := &q.operation.(Select)
+	for expr in s.expressions {
+		fmt.println(expr.data)
+	}
 	
 	return .Ok
 }

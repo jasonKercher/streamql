@@ -1,6 +1,6 @@
 package streamql
 
-enum Logic_Group_Type {
+Logic_Group_Type :: enum {
 	And,
 	Or,
 	Predicate,
@@ -8,16 +8,16 @@ enum Logic_Group_Type {
 }
 
 Logic_Group :: struct {
-	items: [2]Logic_Group,
+	items: [2]^Logic_Group,
 	//expressions: [dynamic]Expression,
-	joinable: [dynamic],
+	joinable: [dynamic]^Logic_Group,
 	join_logic: ^Logic,
 	condition: ^Logic,
 	type: Logic_Group_Type,
 }
 
 
-enum Comparison {
+Comparison :: enum {
 	None = -3,
 	False,
 	True,
@@ -36,18 +36,18 @@ enum Comparison {
 Logic :: struct {
 	exprs: [2]Expression,
 	comp_type: Comparison,
-	data_type: Field_Type,
+	data_type: Data_Type,
 }
 
 new_logic :: proc() -> ^Logic {
-	l := new(logic)
-	l = {
-		comp_type = .None
+	l := new(Logic)
+	l^ = {
+		comp_type = .None,
 	}
 	return l
 }
 
-logic_add_expression(l: ^Logic, expr: ^Expression) {
+logic_add_expression :: proc(l: ^Logic, expr: ^Expression) {
 	if l.exprs[0].type == .Undefined {
 		l.exprs[0] = expr^
 		return

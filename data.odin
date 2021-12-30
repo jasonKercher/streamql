@@ -1,6 +1,6 @@
 package streamql
 
-Field_Type :: enum {
+Data_Type :: enum {
 	Int,
 	Float,
 	String,

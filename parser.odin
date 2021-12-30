@@ -60,6 +60,9 @@ token_get_pos :: proc(p: ^Parser, tok: ^Token) -> (line, off: u32) {
 }
 
 token_to_string :: proc(p: ^Parser, tok: ^Token) -> string {
+	if tok == nil {
+		return ""
+	}
 	return p.q[tok.begin:tok.begin+tok.len]
 }
 
@@ -994,22 +997,44 @@ _parse_source_item :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
 	_get_next_token_or_die(p) or_return
 
-	/* Parse source name or subquery source */
-	#partial switch p.tokens[p.curr].type {
-	case .Query_Name:
-		fallthrough
-	case .Query_Variable:
-		bit_array.set(&p.consumed, p.curr)
-		parse_send_table_source(sql, &p.tokens[p.curr])
-	case .Sym_Lparen:
-		_get_next_token_or_die(p) or_return
-		if p.tokens[p.curr].type != .Select {
-			return parse_error(p, "expected subquery")
+	name_chain : [4]^Token
+	i : int
+
+	loop: for ;; i += 1 {
+		/* Parse source name or subquery source */
+		#partial switch p.tokens[p.curr].type {
+		case .Query_Variable:
+			fallthrough
+		case .Query_Name:
+			bit_array.set(&p.consumed, p.curr)
+			name_chain[i] = &p.tokens[p.curr]
+		case .Sym_Lparen:
+			if i > 0 {
+				return parse_error(p, "unexpected chaining")
+			}
+			_get_next_token_or_die(p) or_return
+			if p.tokens[p.curr].type != .Select {
+				return parse_error(p, "expected subquery")
+			}
+			//bit_array.set(&p.consumed, p.curr)
+			_parse_subquery_source(sql)
+			break loop
+		case:
+			return parse_error(p, "unexpected token")
 		}
+
+		next := _peek_next_token(p, p.curr)
+		if i == 3 || p.tokens[next].type != .Sym_Dot {
+			break loop
+		}
+		_get_next_token(p)
 		bit_array.set(&p.consumed, p.curr)
-		_parse_subquery_source(sql)
-	case:
-		return parse_error(p, "unexpected token")
+		_get_next_token_or_die(p) or_return
+	}
+
+	/* Not a subquery... */
+	if i > 0 {
+		parse_send_table_source(sql, name_chain[:i + 1])
 	}
 
 	if _get_next_token(p) {
@@ -1035,7 +1060,7 @@ _parse_source_item :: proc(sql: ^Streamql) -> Result {
 @(private="file")
 _parse_from_stmt :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
-	parse_enter_from(sql)
+	//parse_enter_from(sql)
 	in_source_list := true
 
 	bit_array.set(&p.consumed, p.curr)
@@ -1093,7 +1118,7 @@ _parse_from_stmt :: proc(sql: ^Streamql) -> Result {
 		}
 	}
 
-	parse_leave_from(sql)
+	//parse_leave_from(sql)
 
 	#partial switch p.tokens[p.curr].type {
 	case .Where:
@@ -1154,10 +1179,12 @@ _parse_select_list :: proc(sql: ^Streamql) -> Result {
 		                         p.tokens[expr_begin].end_expr) or_return
 
 		if p.tokens[p.curr].type == .As {
+			bit_array.set(&p.consumed, p.curr)
 			_get_next_token_or_die(p) or_return
 		}
 
 		if p.tokens[p.curr].type == .Query_Name {
+			bit_array.set(&p.consumed, p.curr)
 			parse_send_column_alias(sql, &p.tokens[p.curr])
 			if _get_next_token(p) {
 				return .Ok
@@ -1401,7 +1428,7 @@ _parse_enter :: proc(sql: ^Streamql) -> Result {
 @(test)
 parse_error_check :: proc (t: ^testing.T) {
 	sql : Streamql
-	construct(&sql)
+	construct(&sql, {.Parse_Only})
 
 	ret: Result
 
@@ -1426,6 +1453,9 @@ parse_error_check :: proc (t: ^testing.T) {
 	ret = parse_parse(&sql, "select from foo")
 	testing.expect_value(t, ret, Result.Error)
 
+	ret = parse_parse(&sql, "select 1 from a.b.c.d.e")
+	testing.expect_value(t, ret, Result.Error)
+
 	ret = parse_parse(&sql, "select 1 where 1=1 from foo")
 	testing.expect_value(t, ret, Result.Error)
 
@@ -1441,13 +1471,13 @@ parse_error_check :: proc (t: ^testing.T) {
 @(test)
 parse_check :: proc (t: ^testing.T) {
 	sql : Streamql
-	construct(&sql)
+	construct(&sql, {.Parse_Only})
 
 	p := &sql.parser
 
 	ret: Result
 
-	ret = parse_parse(&sql, "select 1 select /*my*/ 1")
+	ret = parse_parse(&sql, "select 1 a select /*my*/ 1")
 	testing.expect_value(t, ret, Result.Ok)
 	testing.expect_value(t, p.q_count, 2)
 
