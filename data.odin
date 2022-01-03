@@ -5,3 +5,9 @@ Data_Type :: enum {
 	Float,
 	String,
 }
+
+Data :: union {
+	i64,
+	f64,
+	string,
+}

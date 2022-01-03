@@ -28,8 +28,10 @@ Query :: struct {
 	var_sources: [dynamic]i32,
 	var_expr_vars: [dynamic]i32,
 	var_exprs: [dynamic]i32,
+	joinable_logic: [dynamic]^Logic,
 	into_table_name: string,
 	preview_text: string,
+	state: ^Listener_State,
 	top_count: u64,
 	top_expr: ^Expression,
 	idx: u32,
@@ -89,56 +91,76 @@ query_add_subquery_source :: proc(q: ^Query, subquery: ^Query) -> Result {
 	return .Ok
 }
 
-query_distribute_expression :: proc(sql: ^Streamql, q: ^Query, expr: ^Expression) -> Result {
-	l := &sql.listener
-	if len(l.state.f_stack) > 0 {
-		fn_expr := &l.state.f_stack[len(l.state.f_stack) - 1]
-		function_add_expression(&fn_expr.data.fn, expr)
-		return .Ok
+query_distribute_expression :: proc(q: ^Query, expr: ^Expression) -> (^Expression, Result) {
+	if len(q.state.f_stack) > 0 {
+		fn_expr := q.state.f_stack[len(q.state.f_stack) - 1]
+		return function_add_expression(&fn_expr.data.(Function), expr), .Ok
 	}
-	switch l.state.mode {
+	switch q.state.mode {
 	case .Select_List:
-		select_add_expression(&q.operation.(Select), expr)
+		return select_add_expression(&q.operation.(Select), expr), .Ok
 	case .Update_List:
 		return update_add_expression(&q.operation.(Update), expr)
 	case .Top:
 		q.top_expr = new(Expression)
 		q.top_expr^ = expr^
+		return q.top_expr, .Ok
 	case .Case:
-		return .Error
+		return nil, .Error
 	case .In:
 		fallthrough
 	case .Logic:
-		return _add_logic_expression(sql, q, expr)
+		return _add_logic_expression(q, expr)
 	case .Groupby:
-		group_add_expression(q.groupby, expr)
+		return group_add_expression(q.groupby, expr), .Ok
 	case .Orderby:
-		order_add_expression(q.orderby, expr)
+		return order_add_expression(q.orderby, expr), .Ok
 	case .Set:
 		fallthrough
 	case .Declare:
-		set_set_init_expression(&q.operation.(Set), expr)
+		return set_set_init_expression(&q.operation.(Set), expr), .Ok
 	case .Aggregate:
 		fallthrough
 	case .If:
-		return .Error
+		fallthrough
+	case .Undefined:
+		return nil, .Error
 	}
 
-	return .Ok
+	return nil, .Error
+}
+
+query_new_logic_item :: proc(q: ^Query, type: Logic_Group_Type) -> ^Logic_Group {
+	lg : ^Logic_Group
+	l_stack := &q.state.l_stack
+
+	parent := l_stack[len(l_stack) - 1]
+	if parent.type == .Unset {
+		lg = parent
+		lg.type = type
+	} else if parent.items[0] == nil {
+		lg = new_logic_group(type)
+		parent.items[0] = lg
+	} else {
+		lg = new_logic_group(type)
+		parent.items[1] = lg
+	}
+
+	return lg
 }
 
 @(private = "file")
-_add_logic_expression :: proc(sql: ^Streamql, q: ^Query, expr: ^Expression) -> Result {
-	if sql.listener.state.l_mode != .Having && expr.type == .Aggregate {
+_add_logic_expression :: proc(q: ^Query, expr: ^Expression) -> (^Expression, Result) {
+	if _, ok := expr.data.(Aggregate); ok && q.state.l_stack[0] != q.having {
 		fmt.fprintln(os.stderr, "cannot have aggregate logic outside of HAVING")
-		return .Error
+		return nil, .Error
 	}
 
-	lg := sql.listener.state.l_stack[len(sql.listener.state.l_stack) - 1]
+	lg := q.state.l_stack[len(q.state.l_stack) - 1]
 	if lg.condition == nil {
 		lg.condition = new_logic()
 	}
-	logic_add_expression(lg.condition, expr)
-
-	return .Ok
+	return logic_add_expression(lg.condition, expr), .Ok
 }
+
+

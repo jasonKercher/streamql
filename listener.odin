@@ -10,6 +10,7 @@ Listener_Status :: enum u8 {
 }
 
 Listener_Mode :: enum u8 {
+	Undefined,
 	If,
 	In,
 	Set,
@@ -24,23 +25,14 @@ Listener_Mode :: enum u8 {
 	Update_List,
 }
 
-Listener_Logic_Mode :: enum u8 {
-	Case,
-	Join,
-	Where,
-	Branch,
-	Having,
-}
-
 Listener_State :: struct {
-	f_stack: [dynamic]Expression,
+	f_stack: [dynamic]^Expression,
 	l_stack: [dynamic]^Logic_Group,
 	mode: Listener_Mode,
-	l_mode: Listener_Logic_Mode,
 }
 
 Listener :: struct {
-	state: Listener_State,
+	state_stack: [dynamic]Listener_State,
 	query_stack: [dynamic]^Query,
 	status: bit_set[Listener_Status],
 	sub_id: i16,
@@ -59,7 +51,8 @@ parse_enter_sql :: proc(sql: ^Streamql) -> Result {
 	q.idx = u32(len(sql.queries))
 	q.next_idx = q.idx + 1
 	append(&sql.queries, q)
-	append(&l.query_stack, q) 
+	append(&l.query_stack, q)
+	_push_state(sql)
 
 	return .Ok
 }
@@ -70,18 +63,20 @@ parse_leave_sql :: proc(sql: ^Streamql) -> Result {
 		return .Ok
 	}
 
+
 	l := &sql.listener
 	if .Leaving_Block in l.status {
 		l.status -= {.Leaving_Block}
 		return .Ok
 	}
 
+	_pop_state(sql)
 	prev_query := pop(&l.query_stack)
 	prev_query.query_total = l.sub_id + 1
 
+	curr_query := _get_curr_query(sql)
 	prev_branch : ^Branch
 
-	curr_query := _get_curr_query(sql)
 	if b, ok := prev_query.operation.(Branch); ok {
 		prev_branch = &prev_query.operation.(Branch)
 		switch prev_query.operation.(Branch).type {
@@ -136,7 +131,8 @@ parse_send_int :: proc(sql: ^Streamql, tok: ^Token) -> Result {
 		return .Error
 	}
 	expr := make_expression(val)
-	return query_distribute_expression(sql, _get_curr_query(sql), &expr)
+	expr_ptr, ret := query_distribute_expression(_get_curr_query(sql), &expr)
+	return ret
 }
 
 parse_send_float :: proc(sql: ^Streamql, tok: ^Token) -> Result {
@@ -153,7 +149,8 @@ parse_send_float :: proc(sql: ^Streamql, tok: ^Token) -> Result {
 		return .Error
 	}
 	expr := make_expression(val)
-	return query_distribute_expression(sql, _get_curr_query(sql), &expr)
+	expr_ptr, ret := query_distribute_expression(_get_curr_query(sql), &expr)
+	return ret
 }
 
 parse_send_string :: proc(sql: ^Streamql, tok: ^Token) -> Result {
@@ -163,7 +160,8 @@ parse_send_string :: proc(sql: ^Streamql, tok: ^Token) -> Result {
 		return .Ok
 	}
 	expr := make_expression(s)
-	return query_distribute_expression(sql, _get_curr_query(sql), &expr)
+	expr_ptr, ret := query_distribute_expression(_get_curr_query(sql), &expr)
+	return ret
 }
 
 parse_send_name :: proc(sql: ^Streamql, tok: ^Token, table_name_tok: ^Token) -> Result {
@@ -181,7 +179,8 @@ parse_send_name :: proc(sql: ^Streamql, tok: ^Token, table_name_tok: ^Token) -> 
 		return .Ok
 	}
 	expr := make_expression(field_str, table_str)
-	return query_distribute_expression(sql, _get_curr_query(sql), &expr)
+	expr_ptr, ret := query_distribute_expression(_get_curr_query(sql), &expr)
+	return ret
 }
 
 parse_send_asterisk :: proc(sql: ^Streamql, tok: ^Token, table_name_tok: ^Token) -> Result {
@@ -195,8 +194,9 @@ parse_send_asterisk :: proc(sql: ^Streamql, tok: ^Token, table_name_tok: ^Token)
 		        token_to_string(&sql.parser, table_name_tok))
 		return .Ok
 	}
-	expr := make_expression(Expression_Type.Asterisk)
-	return query_distribute_expression(sql, _get_curr_query(sql), &expr)
+	expr := make_expression(E_Asterisk(""))
+	expr_ptr, ret := query_distribute_expression(_get_curr_query(sql), &expr)
+	return ret
 }
 
 parse_send_variable :: proc(sql: ^Streamql, tok: ^Token) -> Result {
@@ -204,8 +204,10 @@ parse_send_variable :: proc(sql: ^Streamql, tok: ^Token) -> Result {
 		fmt.fprintf(os.stderr, "SEND VAR %s\n", token_to_string(&sql.parser, tok))
 		return .Ok
 	}
-	expr := make_expression(Expression_Type.Variable)
-	return query_distribute_expression(sql, _get_curr_query(sql), &expr)
+
+	expr := make_expression(E_Variable(0))
+	expr_ptr, ret := query_distribute_expression(_get_curr_query(sql), &expr)
+	return ret
 }
 
 parse_send_column_alias :: proc(sql: ^Streamql, tok: ^Token) -> Result {
@@ -244,8 +246,11 @@ parse_leave_subquery_const :: proc(sql: ^Streamql) -> Result {
 	subquery := pop(&l.query_stack)
 	q := _get_curr_query(sql)
 
+	_pop_state(sql)
+
 	expr := make_expression(subquery)
-	return query_distribute_expression(sql, q, &expr)
+	expr_ptr, ret := query_distribute_expression(q, &expr)
+	return ret
 }
 
 parse_enter_function :: proc(sql: ^Streamql, tok: ^Token) -> Result {
@@ -259,6 +264,44 @@ parse_enter_function :: proc(sql: ^Streamql, tok: ^Token) -> Result {
 		fmt.fprintf(os.stderr, "ENTER FUNCTION %s\n", token_to_string(&sql.parser, tok))
 		return .Ok
 	}
+
+	fn_type: Function_Type
+
+	#partial switch tok.type {
+	case .Sym_Plus:
+		fn_type = .Plus
+	case .Sym_Minus:
+		fn_type = .Minus
+	case .Sym_Multiply:
+		fn_type = .Multiply
+	case .Sym_Divide:
+		fn_type = .Divide
+	case .Sym_Modulus:
+		fn_type = .Modulus
+	case .Sym_Bit_Or:
+		fn_type = .Bit_Or
+	case .Sym_Bit_And:
+		fn_type = .Bit_And
+	case .Sym_Plus_Unary:
+		fn_type = .Plus_Unary
+	case .Sym_Minus_Unary:
+		fn_type = .Minus_Unary
+	case .Sym_Bit_Not_Unary:
+		fn_type = .Bit_Not_Unary
+	case:
+		fn_type = Function_Type(tok.type)
+	}
+
+	fn_expr := make_expression(make_function(fn_type))
+	expr_ptr, ret := query_distribute_expression(_get_curr_query(sql), &fn_expr)
+	if ret == .Error {
+		return .Error
+	}
+
+	q := _get_curr_query(sql)
+
+	append(&q.state.f_stack, expr_ptr)
+
 	return .Ok
 }
 
@@ -273,6 +316,10 @@ parse_leave_function :: proc(sql: ^Streamql, tok: ^Token) -> Result {
 		fmt.fprintf(os.stderr, "LEAVE FUNCTION %s\n", token_to_string(&sql.parser, tok))
 		return .Ok
 	}
+
+	q := _get_curr_query(sql)
+	pop(&q.state.f_stack)
+
 	return .Ok
 }
 
@@ -283,7 +330,7 @@ parse_send_select_stmt :: proc(sql: ^Streamql) -> Result {
 	}
 
 	q := _get_curr_query(sql)
-	sql.listener.state.mode = .Select_List
+	q.state.mode = .Select_List
 	q.operation = make_select()
 	_check_for_else(sql)
 
@@ -291,27 +338,15 @@ parse_send_select_stmt :: proc(sql: ^Streamql) -> Result {
 }
 
 parse_send_into_name :: proc(sql: ^Streamql, tok: ^Token) -> Result {
+	s := token_to_string(&sql.parser, tok)
 	if .Parse_Only in sql.config {
 		fmt.fprintf(os.stderr, "SEND INTO NAME %s\n", token_to_string(&sql.parser, tok))
 		return .Ok
 	}
+	q := _get_curr_query(sql)
+	q.into_table_name = strings.clone(s)
 	return .Ok
 }
-
-//parse_enter_from :: proc(sql: ^Streamql) -> Result {
-//	if .Parse_Only in sql.config {
-//		fmt.fprintf(os.stderr, "ENTER FROM\n")
-//		return .Ok
-//	}
-//	return .Ok
-//}
-//parse_leave_from :: proc(sql: ^Streamql) -> Result {
-//	if .Parse_Only in sql.config {
-//		fmt.fprintf(os.stderr, "LEAVE FROM\n")
-//		return .Ok
-//	}
-//	return .Ok
-//}
 
 parse_enter_subquery_source :: proc(sql: ^Streamql) -> Result {
 	if .Parse_Only in sql.config {
@@ -336,7 +371,7 @@ parse_leave_subquery_source :: proc(sql: ^Streamql) -> Result {
 
 	l := &sql.listener
 	subquery := pop(&l.query_stack)
-	
+
 	q := _get_curr_query(sql)
 
 	return query_add_subquery_source(q, subquery)
@@ -428,6 +463,11 @@ parse_enter_where :: proc(sql: ^Streamql) -> Result {
 		fmt.fprintf(os.stderr, "ENTER WHERE\n")
 		return .Ok
 	}
+
+	q := _get_curr_query(sql)
+	q.where_ = new_logic_group(.Unset)
+	append(&q.state.l_stack, q.where_)
+
 	return .Ok
 }
 
@@ -436,6 +476,54 @@ parse_leave_where :: proc(sql: ^Streamql) -> Result {
 		fmt.fprintf(os.stderr, "LEAVE WHERE\n")
 		return .Ok
 	}
+	q := _get_curr_query(sql)
+	pop(&q.state.l_stack)
+	return .Ok
+}
+
+parse_enter_join_logic :: proc(sql: ^Streamql) -> Result {
+	if .Parse_Only in sql.config {
+		fmt.fprintf(os.stderr, "ENTER JOIN LOGIC\n")
+		return .Ok
+	}
+
+	q := _get_curr_query(sql)
+	back_src := &q.sources[len(q.sources) - 1]
+	back_src.join_logic = new_logic_group(.Unset)
+	append(&q.state.l_stack, back_src.join_logic)
+
+	return .Ok
+}
+
+parse_leave_join_logic :: proc(sql: ^Streamql) -> Result {
+	if .Parse_Only in sql.config {
+		fmt.fprintf(os.stderr, "LEAVE JOIN LOGIC\n")
+		return .Ok
+	}
+	q := _get_curr_query(sql)
+	pop(&q.state.l_stack)
+	return .Ok
+}
+
+parse_enter_having :: proc(sql: ^Streamql) -> Result {
+	if .Parse_Only in sql.config {
+		fmt.fprintf(os.stderr, "ENTER HAVING\n")
+		return .Ok
+	}
+	q := _get_curr_query(sql)
+	q.having = new_logic_group(.Unset)
+	append(&q.state.l_stack, q.having)
+
+	return .Ok
+}
+
+parse_leave_having :: proc(sql: ^Streamql) -> Result {
+	if .Parse_Only in sql.config {
+		fmt.fprintf(os.stderr, "LEAVE HAVING\n")
+		return .Ok
+	}
+	q := _get_curr_query(sql)
+	pop(&q.state.l_stack)
 	return .Ok
 }
 
@@ -455,6 +543,12 @@ parse_enter_predicate :: proc(sql: ^Streamql, tok: ^Token, is_not_predicate, is_
 			}
 		}
 		return .Ok
+	}
+
+	if is_not_predicate {
+		query_new_logic_item(_get_curr_query(sql), .Predicate_Negated)
+	} else {
+		query_new_logic_item(_get_curr_query(sql), .Predicate)
 	}
 	return .Ok
 }
@@ -476,6 +570,34 @@ parse_leave_predicate :: proc(sql: ^Streamql, tok: ^Token, is_not_predicate, is_
 		}
 		return .Ok
 	}
+
+	q := _get_curr_query(sql)
+	lg := pop(&q.state.l_stack)
+
+	if is_not {
+		#partial switch lg.condition.comp_type {
+		case .In:
+			lg.condition.comp_type = .Not_In
+		case .Like:
+			lg.condition.comp_type = .Not_Like
+		case:
+			return .Error
+		}
+	}
+
+	/* prerequisite test for joinability */
+	_, exprs0_is_const := lg.condition.exprs[0].data.(E_Constant)
+	_, exprs1_is_const := lg.condition.exprs[1].data.(E_Constant)
+
+	if q.having == nil && lg.condition != nil &&
+	    lg.condition.comp_type == .Eq &&
+	    !exprs0_is_const && !exprs1_is_const {
+		if cap(q.joinable_logic) == 0 {
+			q.joinable_logic = make([dynamic]^Logic)
+		}
+		append(&q.joinable_logic, lg.condition)
+	}
+
 	return .Ok
 }
 
@@ -484,6 +606,7 @@ parse_enter_and :: proc(sql: ^Streamql) -> Result {
 		fmt.fprintf(os.stderr, "ENTER AND\n")
 		return .Ok
 	}
+	query_new_logic_item(_get_curr_query(sql), .And)
 	return .Ok
 }
 
@@ -492,6 +615,8 @@ parse_leave_and :: proc(sql: ^Streamql) -> Result {
 		fmt.fprintf(os.stderr, "LEAVE AND\n")
 		return .Ok
 	}
+	q := _get_curr_query(sql)
+	pop(&q.state.l_stack)
 	return .Ok
 }
 
@@ -500,6 +625,7 @@ parse_enter_or :: proc(sql: ^Streamql) -> Result {
 		fmt.fprintf(os.stderr, "ENTER OR\n")
 		return .Ok
 	}
+	query_new_logic_item(_get_curr_query(sql), .And)
 	return .Ok
 }
 
@@ -508,6 +634,8 @@ parse_leave_or :: proc(sql: ^Streamql) -> Result {
 		fmt.fprintf(os.stderr, "LEAVE OR\n")
 		return .Ok
 	}
+	q := _get_curr_query(sql)
+	pop(&q.state.l_stack)
 	return .Ok
 }
 
@@ -516,6 +644,7 @@ parse_enter_not :: proc(sql: ^Streamql) -> Result {
 		fmt.fprintf(os.stderr, "ENTER NOT\n")
 		return .Ok
 	}
+	query_new_logic_item(_get_curr_query(sql), .Not)
 	return .Ok
 }
 
@@ -524,6 +653,8 @@ parse_leave_not :: proc(sql: ^Streamql) -> Result {
 		fmt.fprintf(os.stderr, "LEAVE NOT\n")
 		return .Ok
 	}
+	q := _get_curr_query(sql)
+	pop(&q.state.l_stack)
 	return .Ok
 }
 
@@ -532,6 +663,8 @@ parse_enter_groupby :: proc(sql: ^Streamql) -> Result {
 		fmt.fprintf(os.stderr, "ENTER GROUP BY\n")
 		return .Ok
 	}
+	q := _get_curr_query(sql)
+	q.groupby = new_group()
 	return .Ok
 }
 
@@ -540,22 +673,7 @@ parse_leave_groupby :: proc(sql: ^Streamql) -> Result {
 		fmt.fprintf(os.stderr, "LEAVE GROUP BY\n")
 		return .Ok
 	}
-	return .Ok
-}
-
-parse_enter_having :: proc(sql: ^Streamql) -> Result {
-	if .Parse_Only in sql.config {
-		fmt.fprintf(os.stderr, "ENTER HAVING\n")
-		return .Ok
-	}
-	return .Ok
-}
-
-parse_leave_having :: proc(sql: ^Streamql) -> Result {
-	if .Parse_Only in sql.config {
-		fmt.fprintf(os.stderr, "LEAVE HAVING\n")
-		return .Ok
-	}
+	/* no-op ? */
 	return .Ok
 }
 
@@ -564,6 +682,8 @@ parse_send_distinct :: proc(sql: ^Streamql) -> Result {
 		fmt.fprintf(os.stderr, "SEND DISTINCT\n")
 		return .Ok
 	}
+	q := _get_curr_query(sql)
+	q.distinct_ = new_group()
 	return .Ok
 }
 
@@ -572,6 +692,7 @@ parse_send_all :: proc(sql: ^Streamql) -> Result {
 		fmt.fprintf(os.stderr, "SEND ALL\n")
 		return .Ok
 	}
+	/* no-op ? */
 	return .Ok
 }
 
@@ -580,6 +701,9 @@ parse_enter_top_expr :: proc(sql: ^Streamql) -> Result {
 		fmt.fprintf(os.stderr, "ENTER TOP EXPR\n")
 		return .Ok
 	}
+	_push_state(sql)
+	q := _get_curr_query(sql)
+	q.state.mode = .Top
 	return .Ok
 }
 
@@ -588,6 +712,7 @@ parse_leave_top_expr :: proc(sql: ^Streamql) -> Result {
 		fmt.fprintf(os.stderr, "LEAVE TOP EXPR\n")
 		return .Ok
 	}
+	_pop_state(sql)
 	return .Ok
 }
 
@@ -610,7 +735,7 @@ _check_for_else :: proc(sql: ^Streamql) {
 	if !ok || op.type  == .While {
 		branch.else_scope = i32(len(sql.scopes))
 		append(&sql.scopes, make_scope())
-		
+
 		s := &sql.scopes[len(sql.scopes) - 1]
 
 		bs := &sql.scopes[branch.scope]
@@ -624,6 +749,24 @@ _check_for_else :: proc(sql: ^Streamql) {
 	else_if_stmt := sql.queries[len(sql.queries) -1]
 	else_if := else_if_stmt.operation.(Branch)
 	else_if.type = .Else_If
+}
+
+@(private = "file")
+_pop_state :: proc(sql: ^Streamql) {
+	s := &sql.listener.state_stack
+	pop(s)
+	if len(s) > 0 {
+		_get_curr_query(sql).state = &s[len(s) - 1]
+	} else {
+		_get_curr_query(sql).state = nil
+	}
+}
+
+@(private = "file")
+_push_state :: proc(sql: ^Streamql) {
+	s := &sql.listener.state_stack
+	append(s, Listener_State{})
+	_get_curr_query(sql).state = &s[len(s) - 1]
 }
 
 @(private = "file")

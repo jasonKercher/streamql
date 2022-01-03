@@ -215,9 +215,30 @@ _parse_case_stmt :: proc(sql: ^Streamql) -> Result {
 }
 
 @(private="file")
-_parse_function :: proc(sql: ^Streamql) -> Result {
+_parse_function :: proc(sql: ^Streamql, begin: u32, allow_star: bool) -> Result {
 	p := &sql.parser
-	return parse_error(p, "function parsing incomplete")
+	loop: for i := begin; i < p.curr; i += 1 {
+		_get_next_token(p, &i)
+		expr_begin := i
+		/* TODO what about COUNT ?? */
+		extra_level := _find_expression(p, allow_star) or_return
+		if extra_level > 1 {
+			return parse_error(p, "unmatched '('")
+		}
+		_parse_expression_runner(sql,
+		                         expr_begin,
+		                         p.tokens[expr_begin].end_expr) or_return
+
+		#partial switch p.tokens[p.curr].type {
+		case .Sym_Rparen:
+			break loop
+		case .Sym_Comma:
+			bit_array.set(&p.consumed, p.curr)
+		case:
+			return parse_error(p, "unexpected token")
+		}
+	}
+	return .Ok
 }
 
 @(private="file")
@@ -227,7 +248,22 @@ _skip_between_stmt :: proc(p: ^Parser) -> Result {
 
 @(private="file")
 _skip_expression_list :: proc(p: ^Parser) -> Result {
-	return parse_error(p, "expression list skipping incomplete")
+	loop: for {
+		_get_next_token_or_die(p) or_return
+		expr_begin := p.curr
+		/* TODO what about COUNT ?? */
+		_find_expression(p, false) or_return
+
+		#partial switch p.tokens[p.curr].type {
+		case .Sym_Rparen:
+			break loop
+		case .Sym_Comma:
+			continue
+		case:
+			return parse_error(p, "unexpected token")
+		}
+	}
+	return .Ok
 }
 
 @(private="file")
@@ -420,9 +456,9 @@ _parse_expression :: proc(sql: ^Streamql, begin, end: u32, group: u16) -> Result
 		if !_token_in_current_expr(p, i, group) {
 			continue
 		}
-		if p.tokens[i].type == .Case {
+		if fn_group := _get_func_group(p.tokens[i].type); fn_group != .None {
 			bit_array.set(&p.consumed, i)
-			_parse_function(sql) or_return
+			_parse_function(sql, i, p.tokens[i].type == .Count) or_return
 		}
 	}
 
@@ -509,8 +545,6 @@ _find_expression :: proc(p: ^Parser, allow_star: bool) -> (level: int, ret: Resu
 		next_state := _Expr_State.None
 		switch state {
 		case .Expect_Val:
-			may_be_function := true
-
 			#partial switch p.tokens[p.curr].type {
 			case .Not: /* If we were sent here from _parse_boolean... */
 				next_state = .Expect_Val
@@ -521,26 +555,19 @@ _find_expression :: proc(p: ^Parser, allow_star: bool) -> (level: int, ret: Resu
 				}
 				p.tokens[p.curr].type = .Sym_Asterisk
 				next_state = .Expect_Op_Or_End
-				may_be_function = false
 			case .Sym_Plus:
 				p.tokens[p.curr].type = .Sym_Plus_Unary
 				next_state = .Expect_Val
-				may_be_function = false
 			case .Sym_Minus:
 				p.tokens[p.curr].type = .Sym_Minus_Unary
 				next_state = .Expect_Val
-				may_be_function = false
 			case .Sym_Bit_Not_Unary:
 				next_state = .Expect_Val
-				may_be_function = false
 			case .Case:
 				next_state = .In_Case
-				may_be_function = false
 			case .Query_Name .. .Literal_String:
 				next_state = .Expect_Op_Or_End
-				may_be_function = false
 			case .Sym_Lparen:
-				may_be_function = false
 				next := _peek_next_token(p, p.curr)
 				/* if this is a Subquery Const, we need to skip over
 				 * all the tokens belonging to the subquery...
@@ -553,11 +580,10 @@ _find_expression :: proc(p: ^Parser, allow_star: bool) -> (level: int, ret: Resu
 					next_state = .Expect_Val
 				}
 			case:
-				in_expr = false
-			}
-
-			if may_be_function {
 				fn_group := _get_func_group(p.tokens[p.curr].type)
+				if fn_group == .None {
+					in_expr = false
+				}
 				next := _peek_next_token(p, p.curr)
 				if p.tokens[next].type != .Sym_Lparen {
 					/* If next token isn't '(' then treat as name */
@@ -565,7 +591,7 @@ _find_expression :: proc(p: ^Parser, allow_star: bool) -> (level: int, ret: Resu
 					next_state = .Expect_Op_Or_End
 				} else {
 					next_state = .In_Function
-					level += 1
+					//level += 1
 				}
 			}
 		case .Expect_Op_Or_End:
@@ -606,7 +632,8 @@ _find_expression :: proc(p: ^Parser, allow_star: bool) -> (level: int, ret: Resu
 				in_expr = false
 			}
 		case .In_Function:
-			return 0, parse_error(p, "function expression incomplete")
+			_skip_expression_list(p)
+			next_state = .Expect_Op_Or_End
 		case .In_Case:
 			return 0, parse_error(p, "case expressions incomplete")
 		case .None:
@@ -1114,7 +1141,9 @@ _parse_from_stmt :: proc(sql: ^Streamql) -> Result {
 			}
 			bit_array.set(&p.consumed, p.curr)
 			_get_next_token_or_die(p) or_return
+			parse_enter_join_logic(sql)
 			_find_boolean_expression(sql) or_return
+			parse_leave_join_logic(sql)
 		}
 	}
 
@@ -1139,7 +1168,9 @@ _parse_where_stmt :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
 	bit_array.set(&p.consumed, p.curr)
 	_get_next_token_or_die(p) or_return
+	parse_enter_where(sql)
 	_find_boolean_expression(sql) or_return
+	parse_leave_where(sql)
 
 	#partial switch p.tokens[p.curr].type {
 	case .Group:

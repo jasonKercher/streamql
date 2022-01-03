@@ -1,5 +1,6 @@
 package streamql
 
+import "core:strings"
 import "core:fmt"
 
 Config :: enum {
@@ -63,9 +64,18 @@ exec :: proc(sql: ^Streamql, query_str: string) -> Result {
 	}
 	q := sql.queries[len(sql.queries) - 1]
 	s := &q.operation.(Select)
-	for expr in s.expressions {
-		fmt.println(expr.data)
+
+	b := strings.make_builder()
+	first := true
+	for expr in &s.expressions {
+		if !first {
+			strings.write_byte(&b, ',')
+		}
+		first = false
+		expression_cat_description(&expr, &b)
 	}
+
+	fmt.println(strings.to_string(b))
 	
 	return .Ok
 }

@@ -12,8 +12,9 @@ make_select :: proc() -> Select {
 	}
 }
 
-select_add_expression :: proc(s: ^Select, expr: ^Expression) {
+select_add_expression :: proc(s: ^Select, expr: ^Expression) -> ^Expression {
 	append(&s.expressions, expr^)
+	return &s.expressions[len(s.expressions) - 1]
 }
 
 select_apply_alias :: proc(s: ^Select, alias: string) {

@@ -1,21 +1,29 @@
 package streamql
 
 Logic_Group_Type :: enum {
+	Unset,
 	And,
 	Or,
+	Not,
 	Predicate,
 	Predicate_Negated,
 }
 
 Logic_Group :: struct {
 	items: [2]^Logic_Group,
-	//expressions: [dynamic]Expression,
 	joinable: [dynamic]^Logic_Group,
 	join_logic: ^Logic,
 	condition: ^Logic,
 	type: Logic_Group_Type,
 }
 
+new_logic_group :: proc(type: Logic_Group_Type) -> ^Logic_Group {
+	lg := new(Logic_Group)
+	lg^ = {
+		type = .Unset,
+	}
+	return lg
+}
 
 Comparison :: enum {
 	None = -3,
@@ -28,8 +36,10 @@ Comparison :: enum {
 	Lt,
 	Le,
 	In,
+	Not_In,
 	Sub_In,
 	Like,
+	Not_Like,
 	Null,
 }
 
@@ -47,10 +57,11 @@ new_logic :: proc() -> ^Logic {
 	return l
 }
 
-logic_add_expression :: proc(l: ^Logic, expr: ^Expression) {
-	if l.exprs[0].type == .Undefined {
+logic_add_expression :: proc(l: ^Logic, expr: ^Expression) -> ^Expression {
+	if l.exprs[0].data == nil {
 		l.exprs[0] = expr^
-		return
+		return &l.exprs[0]
 	}
 	l.exprs[1] = expr^
+	return &l.exprs[1]
 }
