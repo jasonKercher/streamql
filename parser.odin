@@ -36,7 +36,7 @@ make_parser :: proc() -> Parser {
 	}
 }
 
-parse_destroy :: proc(p: ^Parser) {
+destroy_parser :: proc(p: ^Parser) {
 	delete(p.lf_vec)
 	delete(p.tokens)
 	delete(p.tok_map)
@@ -215,25 +215,29 @@ _parse_case_stmt :: proc(sql: ^Streamql) -> Result {
 }
 
 @(private="file")
-_parse_function :: proc(sql: ^Streamql, begin: u32, allow_star: bool) -> Result {
+_skip_between_stmt :: proc(p: ^Parser) -> Result {
+	return parse_error(p, "between skipping incomplete")
+}
+
+@(private="file")
+_parse_function :: proc(sql: ^Streamql, idx: ^u32, allow_star: bool) -> Result {
 	p := &sql.parser
-	loop: for i := begin; i < p.curr; i += 1 {
-		_get_next_token(p, &i)
-		expr_begin := i
-		/* TODO what about COUNT ?? */
-		extra_level := _find_expression(p, allow_star) or_return
+	loop: for idx^ < p.curr {
+		_get_next_token(p, idx)
+		expr_idx := idx^
+		extra_level := _find_expression(p, idx, allow_star) or_return
 		if extra_level > 1 {
 			return parse_error(p, "unmatched '('")
 		}
 		_parse_expression_runner(sql,
-		                         expr_begin,
-		                         p.tokens[expr_begin].end_expr) or_return
+		                         expr_idx,
+		                         p.tokens[expr_idx].end_expr) or_return
 
-		#partial switch p.tokens[p.curr].type {
+		#partial switch p.tokens[idx^].type {
 		case .Sym_Rparen:
 			break loop
 		case .Sym_Comma:
-			bit_array.set(&p.consumed, p.curr)
+			bit_array.set(&p.consumed, idx^)
 		case:
 			return parse_error(p, "unexpected token")
 		}
@@ -242,17 +246,11 @@ _parse_function :: proc(sql: ^Streamql, begin: u32, allow_star: bool) -> Result 
 }
 
 @(private="file")
-_skip_between_stmt :: proc(p: ^Parser) -> Result {
-	return parse_error(p, "between skipping incomplete")
-}
-
-@(private="file")
-_skip_expression_list :: proc(p: ^Parser) -> Result {
+_skip_expression_list :: proc(p: ^Parser, allow_star: bool) -> Result {
 	loop: for {
 		_get_next_token_or_die(p) or_return
 		expr_begin := p.curr
-		/* TODO what about COUNT ?? */
-		_find_expression(p, false) or_return
+		_find_expression(p, &p.curr, allow_star) or_return
 
 		#partial switch p.tokens[p.curr].type {
 		case .Sym_Rparen:
@@ -458,7 +456,10 @@ _parse_expression :: proc(sql: ^Streamql, begin, end: u32, group: u16) -> Result
 		}
 		if fn_group := _get_func_group(p.tokens[i].type); fn_group != .None {
 			bit_array.set(&p.consumed, i)
-			_parse_function(sql, i, p.tokens[i].type == .Count) or_return
+			parse_enter_function(sql, &p.tokens[i])
+			_get_next_token(p, &i)
+			_parse_function(sql, &i, p.tokens[i].type == .Count) or_return
+			parse_leave_function(sql, &p.tokens[i])
 		}
 	}
 
@@ -497,7 +498,7 @@ _Expr_State :: enum {
 }
 
 @(private="file")
-_find_expression :: proc(p: ^Parser, allow_star: bool) -> (level: int, ret: Result) {
+_find_expression :: proc(p: ^Parser, idx: ^u32, allow_star: bool) -> (level: int, ret: Result) {
 	/* This variable represents the lowest legal level
 	 * for exiting the expression.  It is required for
 	 * expressions like:
@@ -517,11 +518,11 @@ _find_expression :: proc(p: ^Parser, allow_star: bool) -> (level: int, ret: Resu
 	first_token_vec := make([dynamic]u32)
 	defer delete(first_token_vec)
 
-	loop: for p.tokens[p.curr].type != .Query_End  {
-		append(&first_token_vec, p.curr)
-		#partial switch p.tokens[p.curr].type {
+	loop: for p.tokens[idx^].type != .Query_End  {
+		append(&first_token_vec, idx^)
+		#partial switch p.tokens[idx^].type {
 		case .Sym_Lparen:
-			next := _peek_next_token(p, p.curr)
+			next := _peek_next_token(p, idx^)
 			/* if this is a subquery const, we want to
 			 * break out of this loop all together
 			 */
@@ -534,18 +535,20 @@ _find_expression :: proc(p: ^Parser, allow_star: bool) -> (level: int, ret: Resu
 		case:
 			break loop
 		}
-		_get_next_token(p)
+		_get_next_token(p, idx)
 	}
 
 	state := _Expr_State.Expect_Val
 	in_expr := true
-	begin := p.curr
+	begin := idx^
+	
+	fn_token : ^Token
 
-	for p.tokens[p.curr].type != .Query_End {
+	for p.tokens[idx^].type != .Query_End {
 		next_state := _Expr_State.None
 		switch state {
 		case .Expect_Val:
-			#partial switch p.tokens[p.curr].type {
+			#partial switch p.tokens[idx^].type {
 			case .Not: /* If we were sent here from _parse_boolean... */
 				next_state = .Expect_Val
 				pop(&first_token_vec)
@@ -553,13 +556,13 @@ _find_expression :: proc(p: ^Parser, allow_star: bool) -> (level: int, ret: Resu
 				if !allow_star {
 					return 0, parse_error(p, "unexpected token")
 				}
-				p.tokens[p.curr].type = .Sym_Asterisk
+				p.tokens[idx^].type = .Sym_Asterisk
 				next_state = .Expect_Op_Or_End
 			case .Sym_Plus:
-				p.tokens[p.curr].type = .Sym_Plus_Unary
+				p.tokens[idx^].type = .Sym_Plus_Unary
 				next_state = .Expect_Val
 			case .Sym_Minus:
-				p.tokens[p.curr].type = .Sym_Minus_Unary
+				p.tokens[idx^].type = .Sym_Minus_Unary
 				next_state = .Expect_Val
 			case .Sym_Bit_Not_Unary:
 				next_state = .Expect_Val
@@ -568,7 +571,7 @@ _find_expression :: proc(p: ^Parser, allow_star: bool) -> (level: int, ret: Resu
 			case .Query_Name .. .Literal_String:
 				next_state = .Expect_Op_Or_End
 			case .Sym_Lparen:
-				next := _peek_next_token(p, p.curr)
+				next := _peek_next_token(p, idx^)
 				/* if this is a Subquery Const, we need to skip over
 				 * all the tokens belonging to the subquery...
 				 */
@@ -580,22 +583,23 @@ _find_expression :: proc(p: ^Parser, allow_star: bool) -> (level: int, ret: Resu
 					next_state = .Expect_Val
 				}
 			case:
-				fn_group := _get_func_group(p.tokens[p.curr].type)
+				fn_group := _get_func_group(p.tokens[idx^].type)
 				if fn_group == .None {
 					in_expr = false
 				}
-				next := _peek_next_token(p, p.curr)
+				next := _peek_next_token(p, idx^)
 				if p.tokens[next].type != .Sym_Lparen {
 					/* If next token isn't '(' then treat as name */
-					p.tokens[p.curr].type = .Query_Name
+					p.tokens[idx^].type = .Query_Name
 					next_state = .Expect_Op_Or_End
 				} else {
+					fn_token = &p.tokens[idx^]
 					next_state = .In_Function
 					//level += 1
 				}
 			}
 		case .Expect_Op_Or_End:
-			#partial switch p.tokens[p.curr].type {
+			#partial switch p.tokens[idx^].type {
 			case .Sym_Rparen:
 				if level == 0 {
 					in_expr = false
@@ -632,7 +636,7 @@ _find_expression :: proc(p: ^Parser, allow_star: bool) -> (level: int, ret: Resu
 				in_expr = false
 			}
 		case .In_Function:
-			_skip_expression_list(p)
+			_skip_expression_list(p, fn_token.type == .Count)
 			next_state = .Expect_Op_Or_End
 		case .In_Case:
 			return 0, parse_error(p, "case expressions incomplete")
@@ -646,11 +650,11 @@ _find_expression :: proc(p: ^Parser, allow_star: bool) -> (level: int, ret: Resu
 
 		state = next_state
 
-		_get_next_token(p)
+		_get_next_token(p, idx)
 	}
 
 	begin = pop(&first_token_vec)
-	p.tokens[begin].end_expr = p.curr
+	p.tokens[begin].end_expr = idx^
 
 	if state != .Expect_Op_Or_End || level != lowest_exit_level {
 		return 0, parse_error(p, "unexpected end of expression")
@@ -903,7 +907,7 @@ _find_boolean_expression :: proc(sql: ^Streamql) -> Result {
 			fallthrough
 		case .Expect_Expression:
 			curr_token := p.curr
-			extra_level := _find_expression(p, false) or_return
+			extra_level := _find_expression(p, &p.curr, false) or_return
 			for ; extra_level != 0; curr_token -= 1 {
 				level += 1
 				extra_level -= 1
@@ -937,7 +941,7 @@ _find_boolean_expression :: proc(sql: ^Streamql) -> Result {
 				_skip_between_stmt(p) or_return
 				state = .Expect_Logic_Or_End
 			case .In:
-				_skip_expression_list(p) or_return
+				_skip_expression_list(p, false) or_return
 				state = .Expect_Logic_Or_End
 			case:
 				return parse_error(p, "Unexpected token")
@@ -1201,7 +1205,7 @@ _parse_select_list :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
 	for {
 		expr_begin := p.curr
-		extra_level := _find_expression(p, true) or_return
+		extra_level := _find_expression(p, &p.curr, true) or_return
 		if extra_level > 0 {
 			return parse_error(p, "unmatched '('")
 		}
@@ -1282,7 +1286,7 @@ _parse_select_stmt :: proc(sql: ^Streamql) -> Result {
 			parse_enter_top_expr(sql)
 			expr_begin := p.curr
 			
-			extra_level := _find_expression(p, false) or_return
+			extra_level := _find_expression(p, &p.curr, false) or_return
 			if extra_level > 0 {
 				return parse_error(p, "unmatched '('")
 			}
@@ -1523,7 +1527,7 @@ parse_check :: proc (t: ^testing.T) {
 	ret = parse_parse(&sql, `
 	    select ((((1+2)*3/*what*/)/foo) | 1 ) + 2
 	    from foo -- you
-	    where ((/*think*/(((1=1) and 2=2) or 3=3 and 4=4 and 5!=6)))
+	    where ((/*think*/(((1=1) and 2=2) or 3=3 and len('foo') = 3 and 5!=6)))
 	`)
 	testing.expect_value(t, ret, Result.Ok)
 	testing.expect_value(t, p.q_count, 1)

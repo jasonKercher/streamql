@@ -777,7 +777,7 @@ lex_error_check :: proc(t: ^testing.T) {
 	//parser.q = "select 1234shnt from foo join foo on 1=1"
 	//testing.expect_value(t, lex_lex(&parser), Result.Error)
 
-	parse_destroy(&parser)
+	destroy_parser(&parser)
 }
 
 @(test)
@@ -823,6 +823,6 @@ lex_check :: proc(t: ^testing.T) {
 	testing.expect_value(t, lex_lex(&parser), Result.Ok)
 	testing.expect_value(t, len(parser.tokens), 32)
 
-	parse_destroy(&parser)
+	destroy_parser(&parser)
 }
 

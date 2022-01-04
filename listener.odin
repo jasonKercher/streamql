@@ -194,7 +194,7 @@ parse_send_asterisk :: proc(sql: ^Streamql, tok: ^Token, table_name_tok: ^Token)
 		        token_to_string(&sql.parser, table_name_tok))
 		return .Ok
 	}
-	expr := make_expression(E_Asterisk(""))
+	expr := make_expression(Expr_Asterisk(""))
 	expr_ptr, ret := query_distribute_expression(_get_curr_query(sql), &expr)
 	return ret
 }
@@ -205,7 +205,7 @@ parse_send_variable :: proc(sql: ^Streamql, tok: ^Token) -> Result {
 		return .Ok
 	}
 
-	expr := make_expression(E_Variable(0))
+	expr := make_expression(Expr_Variable(0))
 	expr_ptr, ret := query_distribute_expression(_get_curr_query(sql), &expr)
 	return ret
 }
@@ -289,7 +289,8 @@ parse_enter_function :: proc(sql: ^Streamql, tok: ^Token) -> Result {
 	case .Sym_Bit_Not_Unary:
 		fn_type = .Bit_Not_Unary
 	case:
-		fn_type = Function_Type(tok.type)
+		offset := int(Token_Type.Abs) - int(Function_Type.Abs)
+		fn_type = Function_Type(int(tok.type) - offset)
 	}
 
 	fn_expr := make_expression(make_function(fn_type))
@@ -586,8 +587,8 @@ parse_leave_predicate :: proc(sql: ^Streamql, tok: ^Token, is_not_predicate, is_
 	}
 
 	/* prerequisite test for joinability */
-	_, exprs0_is_const := lg.condition.exprs[0].data.(E_Constant)
-	_, exprs1_is_const := lg.condition.exprs[1].data.(E_Constant)
+	_, exprs0_is_const := lg.condition.exprs[0].data.(Expr_Constant)
+	_, exprs1_is_const := lg.condition.exprs[1].data.(Expr_Constant)
 
 	if q.having == nil && lg.condition != nil &&
 	    lg.condition.comp_type == .Eq &&

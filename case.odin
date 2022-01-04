@@ -7,7 +7,7 @@ Case_State :: enum u8 {
 	Value,
 }
 
-Case :: struct {
+Expr_Case :: struct {
 	values: [dynamic]Expression,
 	tests: [dynamic]^Logic_Group,
 	state: Case_State,

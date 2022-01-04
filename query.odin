@@ -34,8 +34,9 @@ Query :: struct {
 	state: ^Listener_State,
 	top_count: u64,
 	top_expr: ^Expression,
-	idx: u32,
+	next_idx_ref: ^u32,
 	next_idx: u32,
+	idx: u32,
 	into_table_var: i32,
 	union_id: i32,
 	sub_id: i16,
@@ -94,7 +95,7 @@ query_add_subquery_source :: proc(q: ^Query, subquery: ^Query) -> Result {
 query_distribute_expression :: proc(q: ^Query, expr: ^Expression) -> (^Expression, Result) {
 	if len(q.state.f_stack) > 0 {
 		fn_expr := q.state.f_stack[len(q.state.f_stack) - 1]
-		return function_add_expression(&fn_expr.data.(Function), expr), .Ok
+		return function_add_expression(&fn_expr.data.(Expr_Function), expr), .Ok
 	}
 	switch q.state.mode {
 	case .Select_List:
@@ -151,7 +152,7 @@ query_new_logic_item :: proc(q: ^Query, type: Logic_Group_Type) -> ^Logic_Group 
 
 @(private = "file")
 _add_logic_expression :: proc(q: ^Query, expr: ^Expression) -> (^Expression, Result) {
-	if _, ok := expr.data.(Aggregate); ok && q.state.l_stack[0] != q.having {
+	if _, ok := expr.data.(Expr_Aggregate); ok && q.state.l_stack[0] != q.having {
 		fmt.fprintln(os.stderr, "cannot have aggregate logic outside of HAVING")
 		return nil, .Error
 	}

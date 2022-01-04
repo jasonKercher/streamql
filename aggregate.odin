@@ -1,4 +1,4 @@
 package streamql
 
-Aggregate :: struct {
+Expr_Aggregate :: struct {
 }

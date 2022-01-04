@@ -9,31 +9,36 @@ Expression_Props :: enum u8 {
 	Descending,
 }
 
-E_Column_Name :: distinct string
-E_Full_Record :: distinct string
-E_Row_Number ::  distinct i64
-E_Reference :: distinct ^Expression
-E_Asterisk :: distinct string
-E_Constant :: distinct Data
-E_Grouping :: distinct ^Expression
-E_Subquery :: distinct ^Query
-E_Variable :: distinct i64
-E_Null :: distinct string
+Expr_Full_Record :: distinct i32
+Expr_Row_Number ::  distinct i64
+Expr_Reference :: distinct ^Expression
+Expr_Asterisk :: distinct string
+Expr_Constant :: distinct Data
+Expr_Grouping :: distinct ^Expression
+Expr_Subquery :: distinct ^Query
+Expr_Variable :: distinct i64
+Expr_Null :: distinct string
+
+Expr_Column_Name :: struct {
+	name: string,
+	src_idx: i32,
+	col_idx: i32,
+}
 
 Expression_Data :: union {
-	E_Column_Name,
-	E_Full_Record,
-	E_Row_Number,
-	E_Reference,
-	E_Asterisk,
-	E_Constant,
-	E_Grouping,
-	E_Subquery,
-	E_Variable,
-	E_Null,
-	Case,
-	Function,
-	Aggregate,
+	Expr_Column_Name,
+	Expr_Full_Record,
+	Expr_Row_Number,
+	Expr_Reference,
+	Expr_Asterisk,
+	Expr_Constant,
+	Expr_Grouping,
+	Expr_Subquery,
+	Expr_Variable,
+	Expr_Null,
+	Expr_Case,
+	Expr_Function,
+	Expr_Aggregate,
 }
 
 Expression :: struct {
@@ -46,80 +51,81 @@ Expression :: struct {
 
 make_expression_const_i :: proc(val: i64) -> Expression {
 	return Expression {
-		data = E_Constant(val),
+		data = Expr_Constant(val),
 	}
 }
 
 make_expression_const_f :: proc(val: f64) -> Expression {
 	return Expression {
-		data = E_Constant(val),
+		data = Expr_Constant(val),
 	}
 }
 
 make_expression_const_s :: proc(s: string) -> Expression {
 	return Expression {
-		data = E_Constant(strings.clone(s)),
+		data = Expr_Constant(strings.clone(s)),
 	}
 }
 
 make_expression_subquery :: proc(subquery: ^Query) -> Expression {
 	return Expression {
-		data = E_Subquery(subquery),
+		data = Expr_Subquery(subquery),
 	}
 }
 
 make_expression_name :: proc(name: string, table_name: string) -> Expression {
 	expr : Expression = {
-		data = E_Column_Name(strings.clone(name)),
 		alias = strings.clone(name),
 		table_name = table_name,
 	}
 	switch name {
 	case "__ROWNUM":
-		expr.data = E_Row_Number(0)
+		expr.data = Expr_Row_Number(0)
 	case "__REC":
-		expr.data = E_Full_Record("")
+		expr.data = Expr_Full_Record(-1)
 	case "__CR":
-		expr.data = E_Constant(string("\r"))
+		expr.data = Expr_Constant(string("\r"))
 	case "__LF":
-		expr.data = E_Constant(string("\n"))
+		expr.data = Expr_Constant(string("\n"))
 	case "__CRLF":
-		expr.data = E_Constant(string("\r\n"))
+		expr.data = Expr_Constant(string("\r\n"))
+	case:
+		expr.data = Expr_Column_Name { name = strings.clone(name), col_idx = -1 }
 	}
 	return expr
 }
 
-make_expression_agg :: proc(agg: Aggregate) -> Expression {
+make_expression_agg :: proc(agg: Expr_Aggregate) -> Expression {
 	return Expression {
 		data = agg,
 	}
 }
 
-make_expression_fn :: proc(fn: Function) -> Expression {
+make_expression_fn :: proc(fn: Expr_Function) -> Expression {
 	return Expression {
 		data = fn,
 	}
 }
 
-make_expression_null :: proc(null: E_Null) -> Expression {
+make_expression_null :: proc(null: Expr_Null) -> Expression {
 	return Expression {
 		data = null,
 	}
 }
 
-make_expression_case :: proc(c: Case) -> Expression {
+make_expression_case :: proc(c: Expr_Case) -> Expression {
 	return Expression {
 		data = c,
 	}
 }
 
-make_expression_asterisk :: proc(aster: E_Asterisk) -> Expression {
+make_expression_asterisk :: proc(aster: Expr_Asterisk) -> Expression {
 	return Expression {
 		data = aster,
 	}
 }
 
-make_expression_var :: proc(var: E_Variable) -> Expression {
+make_expression_var :: proc(var: Expr_Variable) -> Expression {
 	return Expression {
 		data = var,
 	}
@@ -141,20 +147,20 @@ make_expression :: proc{
 
 expression_cat_description :: proc(expr: ^Expression, b: ^strings.Builder) {
 	switch v in expr.data {
-	case E_Grouping:
+	case Expr_Grouping:
 		strings.write_string(b, expr.alias)
-	case E_Column_Name:
+	case Expr_Column_Name:
 		strings.write_string(b, expr.alias)
-	case E_Full_Record:
+	case Expr_Full_Record:
 		strings.write_string(b, expr.alias)
-	case E_Row_Number:
+	case Expr_Row_Number:
 		strings.write_string(b, expr.alias)
-	case E_Reference:
+	case Expr_Reference:
 		strings.write_string(b, expr.alias)
-	case E_Asterisk:
+	case Expr_Asterisk:
 		strings.write_byte(b, '*')
-	case E_Constant:
-		switch c in expr.data.(E_Constant) {
+	case Expr_Constant:
+		switch c in expr.data.(Expr_Constant) {
 		case i64:
 			strings.write_i64(b, c)
 		case f64:
@@ -164,18 +170,18 @@ expression_cat_description :: proc(expr: ^Expression, b: ^strings.Builder) {
 		case string:
 			strings.write_string(b, c)
 		}
-	case E_Subquery:
+	case Expr_Subquery:
 		strings.write_string(b, "<subquery>")
-	case E_Variable:
+	case Expr_Variable:
 		strings.write_string(b, "var<")
 		strings.write_i64(b, i64(v))
 		strings.write_byte(b, '>')
-	case E_Null:
+	case Expr_Null:
 		strings.write_string(b, "NULL")
-	case Case:
+	case Expr_Case:
 		strings.write_string(b, "[case expr]")
-	case Function:
-		fn := expr.data.(Function)
+	case Expr_Function:
+		fn := expr.data.(Expr_Function)
 		fn_names := reflect.enum_field_names(typeid_of(Function_Type))
 		strings.write_string(b, fn_names[fn.type])
 		strings.write_byte(b, '(')
@@ -189,12 +195,7 @@ expression_cat_description :: proc(expr: ^Expression, b: ^strings.Builder) {
 			expression_cat_description(&e, b)
 		}
 		strings.write_byte(b, ')')
-	case Aggregate:
+	case Expr_Aggregate:
 		strings.write_string(b, "[aggregate]")
 	}
 }
-
-
-
-
-

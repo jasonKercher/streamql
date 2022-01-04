@@ -1,5 +1,6 @@
 package streamql
 
+import "core:strings"
 import "core:os"
 import "getargs"
 import "util"
@@ -8,37 +9,46 @@ main :: proc()
 {
 	query_str : string
 
-	argparser := getargs.make_getargs()
-	getargs.add_arg(&argparser, "h", "help", getargs.Optarg_Option.None)
-	getargs.add_arg(&argparser, "P", "parse-only", getargs.Optarg_Option.None)
-	getargs.read_args(&argparser, os.args)
+	a := getargs.make_getargs()
+	getargs.add_arg(&a, "h", "help", getargs.Optarg_Option.None)
+	getargs.add_arg(&a, "P", "parse-only", getargs.Optarg_Option.None)
+	getargs.add_arg(&a, "", "schema-path", getargs.Optarg_Option.Required)
+	getargs.read_args(&a, os.args)
 
-	if getargs.get_flag(&argparser, "h") {
+	if getargs.get_flag(&a, "h") {
 		os.write_string(os.stdout, "No help yet")
 		os.exit(0)
 	}
 
 	cfg: bit_set[Config]
-
-	if getargs.get_flag(&argparser, "P") {
+	if getargs.get_flag(&a, "P") {
 		cfg += {.Parse_Only}
-	}
-
-	if len(os.args) > argparser.arg_idx {
-		if buf, ok := os.read_entire_file(os.args[argparser.arg_idx]); ok {
-			query_str = string(buf)
-		} else {
-			os.write_string(os.stderr, "failed to open file\n")
-		}
-		argparser.arg_idx += 1
-	} else {
-		query_str = util.stdin_to_string()
 	}
 
 	sql: Streamql
 	construct(&sql, cfg)
+	if path, ok := getargs.get_payload(&a, "schema-path"); ok {
+		if add_schema_path(&sql, path) == .Error {
+			os.exit(2)
+		}
+	}
+
+	if len(os.args) > a.arg_idx {
+		if buf, ok := os.read_entire_file(os.args[a.arg_idx]); ok {
+			query_str = string(buf)
+		} else {
+			os.write_string(os.stderr, "failed to open file\n")
+		}
+		a.arg_idx += 1
+	} else {
+		query_str = util.stdin_to_string()
+	}
+
 	if exec(&sql, query_str) == .Error {
 		os.exit(2)
 	}
+
+	getargs.destroy(&a)
+	destroy(&sql)
 }
 

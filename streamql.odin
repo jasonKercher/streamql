@@ -2,10 +2,14 @@ package streamql
 
 import "core:strings"
 import "core:fmt"
+import "core:os"
 
 Config :: enum {
 	Parse_Only,
 	_Allow_Stdin,
+	_Delim_Set,
+	_Rec_Term_Set,
+	_Schema_Paths_Resolved,
 }
 
 Result :: enum {
@@ -24,9 +28,12 @@ _Branch_State :: enum {
 Streamql :: struct {
 	parser: Parser,
 	listener: Listener,
+	schema_paths: [dynamic]string,
 	queries: [dynamic]^Query,
 	variables: [dynamic]Variable,
 	scopes: [dynamic]Scope,
+	out_delim: string,
+	rec_term: string,
 	curr_scope: i32,
 	config: bit_set[Config],
 	branch_state: _Branch_State,
@@ -35,6 +42,7 @@ Streamql :: struct {
 construct :: proc(sql: ^Streamql, cfg: bit_set[Config] = {}) {
 	sql^ = {
 		parser = make_parser(),
+		schema_paths = make([dynamic]string),
 		queries = make([dynamic]^Query),
 		scopes = make([dynamic]Scope),
 		config = cfg,
@@ -45,12 +53,18 @@ construct :: proc(sql: ^Streamql, cfg: bit_set[Config] = {}) {
 }
 
 destroy :: proc(sql: ^Streamql) {
-	parse_destroy(&sql.parser)
+	destroy_parser(&sql.parser)
 }
 
 generate_plans :: proc(sql: ^Streamql, query_str: string) -> Result {
-	parse_parse(sql, query_str) or_return
-
+	if parse_parse(sql, query_str) ==  .Error {
+		reset(sql)
+		return .Error
+	}
+	if schema_resolve(sql) == .Error {
+		reset(sql)
+		return .Error
+	}
 
 	return .Ok
 }
@@ -81,4 +95,38 @@ exec :: proc(sql: ^Streamql, query_str: string) -> Result {
 }
 
 reset :: proc(sql: ^Streamql) {
+	clear(&sql.queries)
+	clear(&sql.scopes)
+
+	/* scopes[0] == global scope */
+	append(&sql.scopes, make_scope())
+}
+
+add_schema_path :: proc(sql: ^Streamql, path: string, throw: bool = true) -> Result {
+	cstr := strings.clone_to_cstring(path)
+	defer delete(cstr)
+
+	/* TODO: use syscall directly... */
+	stat: os.OS_Stat
+	if os._unix_stat(cstr, &stat) == -1 {
+		if throw {
+			fmt.fprintf(os.stderr, "Error opening directory `%s'\n", path)
+		}
+		return .Error
+	}
+
+	if !os.S_ISDIR(stat.mode) {
+		if throw {
+			fmt.fprintf(os.stderr, "`%s' does not appear to be a directory\n", path)
+		}
+		return .Error
+	}
+
+	append(&sql.schema_paths, strings.clone(path))
+	return .Ok
+}
+
+not_implemented :: proc(loc := #caller_location) -> Result {
+	fmt.fprintln(os.stderr, "not implemented:", loc)
+	return .Error
 }
