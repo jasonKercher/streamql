@@ -25,6 +25,8 @@ Source :: struct {
 	data: Source_Data,
 	alias: string,
 	schema: Schema,
+	joinable_logic: []^Logic,
+	join_data: ^Hash_Join,
 	join_logic: ^Logic_Group,
 	join_type: Join_Type,
 	props: bit_set[Source_Props],
@@ -37,7 +39,7 @@ source_construct_name :: proc(src: ^Source, name: string) {
 	}
 }
 
-source_constuct_subquery :: proc(src: ^Source, subquery: ^Query) {
+source_construct_subquery :: proc(src: ^Source, subquery: ^Query) {
 	src^ = {
 		data = subquery,
 		schema = make_schema(),
@@ -46,5 +48,33 @@ source_constuct_subquery :: proc(src: ^Source, subquery: ^Query) {
 
 source_construct :: proc {
 	source_construct_name,
-	source_constuct_subquery,
+	source_construct_subquery,
+}
+
+source_resolve_schema :: proc(sql: ^Streamql, src: ^Source) -> Result {
+	if .Is_Preresolved in src.schema.props {
+		return .Ok
+	}
+
+	delim: string
+	#partial switch src.schema.reader.type {
+	case .Delimited:
+		delim = src.schema.reader.data._delim
+		src.schema.io = .Delimited
+	case .Subquery:
+		subquery := src.data.(^Query)
+		sub_schema := op_get_schema(&subquery.operation)
+		if sub_schema == &src.schema {
+			return .Ok
+		}
+		delim = sub_schema.delim
+		src.schema.write_io = sub_schema.write_io
+	case .Fixed:
+		src.schema.write_io = .Fixed
+	case:
+		return .Error
+	}
+
+	schema_set_delim(&src.schema, delim)
+	return .Ok
 }

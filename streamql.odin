@@ -5,7 +5,11 @@ import "core:fmt"
 import "core:os"
 
 Config :: enum {
+	Strict,
+	Overwrite,
+	Summarize,
 	Parse_Only,
+	Force_Cartesian,
 	_Allow_Stdin,
 	_Delim_Set,
 	_Rec_Term_Set,
@@ -28,6 +32,8 @@ _Branch_State :: enum {
 Streamql :: struct {
 	parser: Parser,
 	listener: Listener,
+	default_schema: string,
+	schema_map: map[string]^Schema,
 	schema_paths: [dynamic]string,
 	queries: [dynamic]^Query,
 	variables: [dynamic]Variable,
@@ -103,19 +109,7 @@ reset :: proc(sql: ^Streamql) {
 }
 
 add_schema_path :: proc(sql: ^Streamql, path: string, throw: bool = true) -> Result {
-	cstr := strings.clone_to_cstring(path)
-	defer delete(cstr)
-
-	/* TODO: use syscall directly... */
-	stat: os.OS_Stat
-	if os._unix_stat(cstr, &stat) == -1 {
-		if throw {
-			fmt.fprintf(os.stderr, "Error opening directory `%s'\n", path)
-		}
-		return .Error
-	}
-
-	if !os.S_ISDIR(stat.mode) {
+	if !os.is_dir(path) {
 		if throw {
 			fmt.fprintf(os.stderr, "`%s' does not appear to be a directory\n", path)
 		}

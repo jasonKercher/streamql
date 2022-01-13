@@ -466,7 +466,7 @@ parse_enter_where :: proc(sql: ^Streamql) -> Result {
 	}
 
 	q := _get_curr_query(sql)
-	q.where_ = new_logic_group(.Unset)
+	q.where_ = new_logic_group(nil)
 	append(&q.state.l_stack, q.where_)
 
 	return .Ok
@@ -490,7 +490,7 @@ parse_enter_join_logic :: proc(sql: ^Streamql) -> Result {
 
 	q := _get_curr_query(sql)
 	back_src := &q.sources[len(q.sources) - 1]
-	back_src.join_logic = new_logic_group(.Unset)
+	back_src.join_logic = new_logic_group(nil)
 	append(&q.state.l_stack, back_src.join_logic)
 
 	return .Ok
@@ -512,7 +512,7 @@ parse_enter_having :: proc(sql: ^Streamql) -> Result {
 		return .Ok
 	}
 	q := _get_curr_query(sql)
-	q.having = new_logic_group(.Unset)
+	q.having = new_logic_group(nil)
 	append(&q.state.l_stack, q.having)
 
 	return .Ok

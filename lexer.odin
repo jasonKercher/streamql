@@ -1,5 +1,7 @@
 package streamql
 
+import "bytemap"
+
 import "core:os"
 import "core:fmt"
 import "core:strings"
@@ -227,244 +229,243 @@ Token_Type :: enum u16 {
 	Sym_Line_Comment,
 }
 
-lex_lex :: proc (parser: ^Parser) -> Result {
-	if len(parser.tok_map) == 0 {
-		_init_map(parser)
+lex_lex :: proc (p: ^Parser) -> Result {
+	if len(p.tok_map.values) == 0 {
+		_init_map(p)
 	}
 
-	resize(&parser.tokens, 0)
-	resize(&parser.lf_vec, 0)
-	bit_array.clear(&parser.consumed)
+	resize(&p.tokens, 0)
+	resize(&p.lf_vec, 0)
+	bit_array.clear(&p.consumed)
 
-	return _lex_tokenize(parser)
+	return _lex_tokenize(p)
 }
 
-lex_error :: proc(parser: ^Parser, idx: u32, msg: string = "lex error") -> Result {
-	line, off := parse_get_pos(parser, idx)
+lex_error :: proc(p: ^Parser, idx: u32, msg: string = "lex error") -> Result {
+	line, off := parse_get_pos(p, idx)
 	fmt.fprintf(os.stderr, "%s (line: %d, pos: %d)\n", msg, line, off)
 	return .Error
 }
 
 @(private="file")
-_insert_into_map :: proc(parser: ^Parser, key: string, type: Token_Type) {
-	parser.tok_map[key] = type
+_insert_into_map :: proc(p: ^Parser, key: string, type: Token_Type) {
+	ret := bytemap.set(&p.tok_map, key, type)
+	assert(ret == .Not_Found)
 }
 
 @(private="file")
-_init_map :: proc(parser: ^Parser) {
-	_insert_into_map(parser, "abs",          .Abs)
-	_insert_into_map(parser, "ascii",        .Ascii)
-	_insert_into_map(parser, "ceiling",      .Ceiling)
-	_insert_into_map(parser, "char",         .Char)
-	_insert_into_map(parser, "charindex",    .Charindex)
-	_insert_into_map(parser, "datalength",   .Datalength)
-	_insert_into_map(parser, "day",          .Day)
-	_insert_into_map(parser, "floor",        .Floor)
-	_insert_into_map(parser, "isdate",       .Isdate)
-	_insert_into_map(parser, "isnumeric",    .Isnumeric)
-	_insert_into_map(parser, "len",          .Len)
-	_insert_into_map(parser, "lower",        .Lower)
-	_insert_into_map(parser, "ltrim",        .Ltrim)
-	_insert_into_map(parser, "month",        .Month)
-	_insert_into_map(parser, "nchar",        .Nchar)
-	_insert_into_map(parser, "patindex",     .Patindex)
-	_insert_into_map(parser, "rand",         .Rand)
-	_insert_into_map(parser, "replace",      .Replace)
-	_insert_into_map(parser, "round",        .Round)
-	_insert_into_map(parser, "rtrim",        .Rtrim)
-	_insert_into_map(parser, "sign",         .Sign)
-	_insert_into_map(parser, "space",        .Space)
-	_insert_into_map(parser, "str",          .Str)
-	_insert_into_map(parser, "substring",    .Substring)
-	_insert_into_map(parser, "upper",        .Upper)
-	_insert_into_map(parser, "user_name",    .User_Name)
-	_insert_into_map(parser, "year",         .Year)
-	_insert_into_map(parser, "text",         .Text)
-	_insert_into_map(parser, "ntext",        .Ntext)
-	_insert_into_map(parser, "add",          .Add)
-	_insert_into_map(parser, "all",          .All)
-	_insert_into_map(parser, "alter",        .Alter)
-	_insert_into_map(parser, "and",          .And)
-	_insert_into_map(parser, "any",          .Any)
-	_insert_into_map(parser, "as",           .As)
-	_insert_into_map(parser, "begin",        .Begin)
-	_insert_into_map(parser, "between",      .Between)
-	_insert_into_map(parser, "break",        .Break)
-	_insert_into_map(parser, "by",           .By)
-	_insert_into_map(parser, "case",         .Case)
-	_insert_into_map(parser, "coalesce",     .Coalesce)
-	_insert_into_map(parser, "column",       .Column)
-	_insert_into_map(parser, "continue",     .Continue)
-	_insert_into_map(parser, "convert",      .Convert)
-	_insert_into_map(parser, "create",       .Create)
-	_insert_into_map(parser, "cross",        .Cross)
-	_insert_into_map(parser, "declare",      .Declare)
-	_insert_into_map(parser, "delete",       .Delete)
-	_insert_into_map(parser, "desc",         .Desc)
-	_insert_into_map(parser, "distinct",     .Distinct)
-	_insert_into_map(parser, "distributed",  .Distributed)
-	_insert_into_map(parser, "drop",         .Drop)
-	_insert_into_map(parser, "else",         .Else)
-	_insert_into_map(parser, "end",          .End)
-	_insert_into_map(parser, "execute",      .Execute)
-	_insert_into_map(parser, "exists",       .Exists)
-	_insert_into_map(parser, "from",         .From)
-	_insert_into_map(parser, "full",         .Full)
-	_insert_into_map(parser, "function",     .Function)
-	_insert_into_map(parser, "goto",         .Goto)
-	_insert_into_map(parser, "group",        .Group)
-	_insert_into_map(parser, "having",       .Having)
-	_insert_into_map(parser, "if",           .If)
-	_insert_into_map(parser, "in",           .In)
-	_insert_into_map(parser, "inner",        .Inner)
-	_insert_into_map(parser, "insert",       .Insert)
-	_insert_into_map(parser, "into",         .Into)
-	_insert_into_map(parser, "is",           .Is)
-	_insert_into_map(parser, "join",         .Join)
-	_insert_into_map(parser, "left",         .Left)
-	_insert_into_map(parser, "like",         .Like)
-	_insert_into_map(parser, "not",          .Not)
-	_insert_into_map(parser, "null",         .Null)
-	_insert_into_map(parser, "nullif",       .Nullif)
-	_insert_into_map(parser, "of",           .Of)
-	_insert_into_map(parser, "off",          .Off)
-	_insert_into_map(parser, "on",           .On)
-	_insert_into_map(parser, "open",         .Open)
-	_insert_into_map(parser, "or",           .Or)
-	_insert_into_map(parser, "order",        .Order)
-	_insert_into_map(parser, "over",         .Over)
-	_insert_into_map(parser, "percent",      .Percent)
-	_insert_into_map(parser, "print",        .Print)
-	_insert_into_map(parser, "proc",         .Proc)
-	_insert_into_map(parser, "procedure",    .Procedure)
-	_insert_into_map(parser, "raiserror",    .Raiserror)
-	_insert_into_map(parser, "replication",  .Replication)
-	_insert_into_map(parser, "return",       .Return)
-	_insert_into_map(parser, "revert",       .Revert)
-	_insert_into_map(parser, "right",        .Right)
-	_insert_into_map(parser, "rollback",     .Rollback)
-	_insert_into_map(parser, "save",         .Save)
-	_insert_into_map(parser, "schema",       .Schema)
-	_insert_into_map(parser, "select",       .Select)
-	_insert_into_map(parser, "set",          .Set)
-	_insert_into_map(parser, "table",        .Table)
-	_insert_into_map(parser, "then",         .Then)
-	_insert_into_map(parser, "to",           .To)
-	_insert_into_map(parser, "top",          .Top)
-	_insert_into_map(parser, "tran",         .Tran)
-	_insert_into_map(parser, "transaction",  .Transaction)
-	_insert_into_map(parser, "truncate",     .Truncate)
-	_insert_into_map(parser, "union",        .Union)
-	_insert_into_map(parser, "update",       .Update)
-	_insert_into_map(parser, "user",         .User)
-	_insert_into_map(parser, "values",       .Values)
-	_insert_into_map(parser, "when",         .When)
-	_insert_into_map(parser, "where",        .Where)
-	_insert_into_map(parser, "while",        .While)
-	_insert_into_map(parser, "avg",          .Avg)
-	_insert_into_map(parser, "bigint",       .Bigint)
-	_insert_into_map(parser, "cast",         .Cast)
-	_insert_into_map(parser, "try_cast",     .Try_Cast)
-	_insert_into_map(parser, "checksum",     .Checksum)
-	_insert_into_map(parser, "checksum_agg", .Checksum_Agg)
-	_insert_into_map(parser, "concat",       .Concat)
-	_insert_into_map(parser, "count",        .Count)
-	_insert_into_map(parser, "dateadd",      .Dateadd)
-	_insert_into_map(parser, "datediff",     .Datediff)
-	_insert_into_map(parser, "datename",     .Datename)
-	_insert_into_map(parser, "datepart",     .Datepart)
-	_insert_into_map(parser, "days",         .Days)
-	_insert_into_map(parser, "dense_rank",   .Dense_Rank)
-	_insert_into_map(parser, "getdate",      .Getdate)
-	_insert_into_map(parser, "getutcdate",   .Getutcdate)
-	_insert_into_map(parser, "go",           .Go)
-	_insert_into_map(parser, "hash",         .Hash)
-	_insert_into_map(parser, "hours",        .Hours)
-	_insert_into_map(parser, "int",          .Int)
-	_insert_into_map(parser, "max",          .Max)
-	_insert_into_map(parser, "min",          .Min)
-	_insert_into_map(parser, "minutes",      .Minutes)
-	_insert_into_map(parser, "range",        .Range)
-	_insert_into_map(parser, "rank",         .Rank)
-	_insert_into_map(parser, "row",          .Row)
-	_insert_into_map(parser, "row_number",   .Row_Number)
-	_insert_into_map(parser, "rows",         .Rows)
-	_insert_into_map(parser, "seconds",      .Seconds)
-	_insert_into_map(parser, "smallint",     .Smallint)
-	_insert_into_map(parser, "static",       .Static)
-	_insert_into_map(parser, "statusonly",   .Statusonly)
-	_insert_into_map(parser, "stdev",        .Stdev)
-	_insert_into_map(parser, "stdevp",       .Stdevp)
-	_insert_into_map(parser, "string_agg",   .String_Agg)
-	_insert_into_map(parser, "stuff",        .Stuff)
-	_insert_into_map(parser, "sum",          .Sum)
-	_insert_into_map(parser, "tinyint",      .Tinyint)
-	_insert_into_map(parser, "wait",         .Wait)
-	_insert_into_map(parser, "waitfor",      .Waitfor)
-	_insert_into_map(parser, "isnull",       .Isnull)
-	_insert_into_map(parser, "varchar",      .Varchar)
-	_insert_into_map(parser, "nvarchar",     .Nvarchar)
+_init_map :: proc(p: ^Parser) {
+	_insert_into_map(p, "abs",          .Abs)
+	_insert_into_map(p, "ascii",        .Ascii)
+	_insert_into_map(p, "ceiling",      .Ceiling)
+	_insert_into_map(p, "char",         .Char)
+	_insert_into_map(p, "charindex",    .Charindex)
+	_insert_into_map(p, "datalength",   .Datalength)
+	_insert_into_map(p, "day",          .Day)
+	_insert_into_map(p, "floor",        .Floor)
+	_insert_into_map(p, "isdate",       .Isdate)
+	_insert_into_map(p, "isnumeric",    .Isnumeric)
+	_insert_into_map(p, "len",          .Len)
+	_insert_into_map(p, "lower",        .Lower)
+	_insert_into_map(p, "ltrim",        .Ltrim)
+	_insert_into_map(p, "month",        .Month)
+	_insert_into_map(p, "nchar",        .Nchar)
+	_insert_into_map(p, "patindex",     .Patindex)
+	_insert_into_map(p, "rand",         .Rand)
+	_insert_into_map(p, "replace",      .Replace)
+	_insert_into_map(p, "round",        .Round)
+	_insert_into_map(p, "rtrim",        .Rtrim)
+	_insert_into_map(p, "sign",         .Sign)
+	_insert_into_map(p, "space",        .Space)
+	_insert_into_map(p, "str",          .Str)
+	_insert_into_map(p, "substring",    .Substring)
+	_insert_into_map(p, "upper",        .Upper)
+	_insert_into_map(p, "user_name",    .User_Name)
+	_insert_into_map(p, "year",         .Year)
+	_insert_into_map(p, "text",         .Text)
+	_insert_into_map(p, "ntext",        .Ntext)
+	_insert_into_map(p, "add",          .Add)
+	_insert_into_map(p, "all",          .All)
+	_insert_into_map(p, "alter",        .Alter)
+	_insert_into_map(p, "and",          .And)
+	_insert_into_map(p, "any",          .Any)
+	_insert_into_map(p, "as",           .As)
+	_insert_into_map(p, "begin",        .Begin)
+	_insert_into_map(p, "between",      .Between)
+	_insert_into_map(p, "break",        .Break)
+	_insert_into_map(p, "by",           .By)
+	_insert_into_map(p, "case",         .Case)
+	_insert_into_map(p, "coalesce",     .Coalesce)
+	_insert_into_map(p, "column",       .Column)
+	_insert_into_map(p, "continue",     .Continue)
+	_insert_into_map(p, "convert",      .Convert)
+	_insert_into_map(p, "create",       .Create)
+	_insert_into_map(p, "cross",        .Cross)
+	_insert_into_map(p, "declare",      .Declare)
+	_insert_into_map(p, "delete",       .Delete)
+	_insert_into_map(p, "desc",         .Desc)
+	_insert_into_map(p, "distinct",     .Distinct)
+	_insert_into_map(p, "distributed",  .Distributed)
+	_insert_into_map(p, "drop",         .Drop)
+	_insert_into_map(p, "else",         .Else)
+	_insert_into_map(p, "end",          .End)
+	_insert_into_map(p, "execute",      .Execute)
+	_insert_into_map(p, "exists",       .Exists)
+	_insert_into_map(p, "from",         .From)
+	_insert_into_map(p, "full",         .Full)
+	_insert_into_map(p, "function",     .Function)
+	_insert_into_map(p, "goto",         .Goto)
+	_insert_into_map(p, "group",        .Group)
+	_insert_into_map(p, "having",       .Having)
+	_insert_into_map(p, "if",           .If)
+	_insert_into_map(p, "in",           .In)
+	_insert_into_map(p, "inner",        .Inner)
+	_insert_into_map(p, "insert",       .Insert)
+	_insert_into_map(p, "into",         .Into)
+	_insert_into_map(p, "is",           .Is)
+	_insert_into_map(p, "join",         .Join)
+	_insert_into_map(p, "left",         .Left)
+	_insert_into_map(p, "like",         .Like)
+	_insert_into_map(p, "not",          .Not)
+	_insert_into_map(p, "null",         .Null)
+	_insert_into_map(p, "nullif",       .Nullif)
+	_insert_into_map(p, "of",           .Of)
+	_insert_into_map(p, "off",          .Off)
+	_insert_into_map(p, "on",           .On)
+	_insert_into_map(p, "open",         .Open)
+	_insert_into_map(p, "or",           .Or)
+	_insert_into_map(p, "order",        .Order)
+	_insert_into_map(p, "over",         .Over)
+	_insert_into_map(p, "percent",      .Percent)
+	_insert_into_map(p, "print",        .Print)
+	_insert_into_map(p, "proc",         .Proc)
+	_insert_into_map(p, "procedure",    .Procedure)
+	_insert_into_map(p, "raiserror",    .Raiserror)
+	_insert_into_map(p, "replication",  .Replication)
+	_insert_into_map(p, "return",       .Return)
+	_insert_into_map(p, "revert",       .Revert)
+	_insert_into_map(p, "right",        .Right)
+	_insert_into_map(p, "rollback",     .Rollback)
+	_insert_into_map(p, "save",         .Save)
+	_insert_into_map(p, "schema",       .Schema)
+	_insert_into_map(p, "select",       .Select)
+	_insert_into_map(p, "set",          .Set)
+	_insert_into_map(p, "table",        .Table)
+	_insert_into_map(p, "then",         .Then)
+	_insert_into_map(p, "to",           .To)
+	_insert_into_map(p, "top",          .Top)
+	_insert_into_map(p, "tran",         .Tran)
+	_insert_into_map(p, "transaction",  .Transaction)
+	_insert_into_map(p, "truncate",     .Truncate)
+	_insert_into_map(p, "union",        .Union)
+	_insert_into_map(p, "update",       .Update)
+	_insert_into_map(p, "user",         .User)
+	_insert_into_map(p, "values",       .Values)
+	_insert_into_map(p, "when",         .When)
+	_insert_into_map(p, "where",        .Where)
+	_insert_into_map(p, "while",        .While)
+	_insert_into_map(p, "avg",          .Avg)
+	_insert_into_map(p, "bigint",       .Bigint)
+	_insert_into_map(p, "cast",         .Cast)
+	_insert_into_map(p, "try_cast",     .Try_Cast)
+	_insert_into_map(p, "checksum",     .Checksum)
+	_insert_into_map(p, "checksum_agg", .Checksum_Agg)
+	_insert_into_map(p, "concat",       .Concat)
+	_insert_into_map(p, "count",        .Count)
+	_insert_into_map(p, "dateadd",      .Dateadd)
+	_insert_into_map(p, "datediff",     .Datediff)
+	_insert_into_map(p, "datename",     .Datename)
+	_insert_into_map(p, "datepart",     .Datepart)
+	_insert_into_map(p, "days",         .Days)
+	_insert_into_map(p, "dense_rank",   .Dense_Rank)
+	_insert_into_map(p, "getdate",      .Getdate)
+	_insert_into_map(p, "getutcdate",   .Getutcdate)
+	_insert_into_map(p, "go",           .Go)
+	_insert_into_map(p, "hash",         .Hash)
+	_insert_into_map(p, "hours",        .Hours)
+	_insert_into_map(p, "int",          .Int)
+	_insert_into_map(p, "max",          .Max)
+	_insert_into_map(p, "min",          .Min)
+	_insert_into_map(p, "minutes",      .Minutes)
+	_insert_into_map(p, "range",        .Range)
+	_insert_into_map(p, "rank",         .Rank)
+	_insert_into_map(p, "row",          .Row)
+	_insert_into_map(p, "row_number",   .Row_Number)
+	_insert_into_map(p, "rows",         .Rows)
+	_insert_into_map(p, "seconds",      .Seconds)
+	_insert_into_map(p, "smallint",     .Smallint)
+	_insert_into_map(p, "static",       .Static)
+	_insert_into_map(p, "statusonly",   .Statusonly)
+	_insert_into_map(p, "stdev",        .Stdev)
+	_insert_into_map(p, "stdevp",       .Stdevp)
+	_insert_into_map(p, "string_agg",   .String_Agg)
+	_insert_into_map(p, "stuff",        .Stuff)
+	_insert_into_map(p, "sum",          .Sum)
+	_insert_into_map(p, "tinyint",      .Tinyint)
+	_insert_into_map(p, "wait",         .Wait)
+	_insert_into_map(p, "waitfor",      .Waitfor)
+	_insert_into_map(p, "isnull",       .Isnull)
+	_insert_into_map(p, "varchar",      .Varchar)
+	_insert_into_map(p, "nvarchar",     .Nvarchar)
 
-	_insert_into_map(parser, "#",  .Sym_Pound)
-	_insert_into_map(parser, "(",  .Sym_Lparen)
-	_insert_into_map(parser, ")",  .Sym_Rparen)
-	_insert_into_map(parser, "+=", .Sym_Plus_Assign)
-	_insert_into_map(parser, "-=", .Sym_Minus_Assign)
-	_insert_into_map(parser, "*=", .Sym_Multiply_Assign)
-	_insert_into_map(parser, "/=", .Sym_Divide_Assign)
-	_insert_into_map(parser, "%=", .Sym_Modulus_Assign)
-	_insert_into_map(parser, "~=", .Sym_Bit_Not_Assign)
-	_insert_into_map(parser, "|=", .Sym_Bit_Or_Assign)
-	_insert_into_map(parser, "&=", .Sym_Bit_And_Assign)
-	_insert_into_map(parser, "^=", .Sym_Bit_Xor_Assign)
-	_insert_into_map(parser, "+",  .Sym_Plus)
-	_insert_into_map(parser, "-",  .Sym_Minus)
-	_insert_into_map(parser, "*",  .Sym_Multiply)
-	_insert_into_map(parser, "/",  .Sym_Divide)
-	_insert_into_map(parser, "%",  .Sym_Modulus)
-	_insert_into_map(parser, "~",  .Sym_Bit_Not_Unary)
-	_insert_into_map(parser, "|",  .Sym_Bit_Or)
-	_insert_into_map(parser, "&",  .Sym_Bit_And)
-	_insert_into_map(parser, "^",  .Sym_Bit_Xor)
-	_insert_into_map(parser, ".",  .Sym_Dot)
-	_insert_into_map(parser, "=",  .Sym_Eq)
-	_insert_into_map(parser, "!=", .Sym_Ne)
-	_insert_into_map(parser, "<>", .Sym_Ne)
-	_insert_into_map(parser, ">",  .Sym_Gt)
-	_insert_into_map(parser, ">=", .Sym_Ge)
-	_insert_into_map(parser, "<",  .Sym_Lt)
-	_insert_into_map(parser, "<=", .Sym_Le)
-	_insert_into_map(parser, ",",  .Sym_Comma)
-	_insert_into_map(parser, ";",  .Sym_Semicolon)
-	_insert_into_map(parser, "/*", .Sym_Block_Comment)
-	_insert_into_map(parser, "--", .Sym_Line_Comment)
-
-	//fmt.fprintf(os.stderr, "mapsize: %d\n", len(parser.tok_map))
+	_insert_into_map(p, "#",  .Sym_Pound)
+	_insert_into_map(p, "(",  .Sym_Lparen)
+	_insert_into_map(p, ")",  .Sym_Rparen)
+	_insert_into_map(p, "+=", .Sym_Plus_Assign)
+	_insert_into_map(p, "-=", .Sym_Minus_Assign)
+	_insert_into_map(p, "*=", .Sym_Multiply_Assign)
+	_insert_into_map(p, "/=", .Sym_Divide_Assign)
+	_insert_into_map(p, "%=", .Sym_Modulus_Assign)
+	_insert_into_map(p, "~=", .Sym_Bit_Not_Assign)
+	_insert_into_map(p, "|=", .Sym_Bit_Or_Assign)
+	_insert_into_map(p, "&=", .Sym_Bit_And_Assign)
+	_insert_into_map(p, "^=", .Sym_Bit_Xor_Assign)
+	_insert_into_map(p, "+",  .Sym_Plus)
+	_insert_into_map(p, "-",  .Sym_Minus)
+	_insert_into_map(p, "*",  .Sym_Multiply)
+	_insert_into_map(p, "/",  .Sym_Divide)
+	_insert_into_map(p, "%",  .Sym_Modulus)
+	_insert_into_map(p, "~",  .Sym_Bit_Not_Unary)
+	_insert_into_map(p, "|",  .Sym_Bit_Or)
+	_insert_into_map(p, "&",  .Sym_Bit_And)
+	_insert_into_map(p, "^",  .Sym_Bit_Xor)
+	_insert_into_map(p, ".",  .Sym_Dot)
+	_insert_into_map(p, "=",  .Sym_Eq)
+	_insert_into_map(p, "!=", .Sym_Ne)
+	_insert_into_map(p, "<>", .Sym_Ne)
+	_insert_into_map(p, ">",  .Sym_Gt)
+	_insert_into_map(p, ">=", .Sym_Ge)
+	_insert_into_map(p, "<",  .Sym_Lt)
+	_insert_into_map(p, "<=", .Sym_Le)
+	_insert_into_map(p, ",",  .Sym_Comma)
+	_insert_into_map(p, ";",  .Sym_Semicolon)
+	_insert_into_map(p, "/*", .Sym_Block_Comment)
+	_insert_into_map(p, "--", .Sym_Line_Comment)
 }
 
 @(private="file")
-_skip_whitespace :: proc(parser: ^Parser, idx: ^u32)
+_skip_whitespace :: proc(p: ^Parser, idx: ^u32)
 {
-	for ; idx^ < u32(len(parser.q)) && unicode.is_space(rune(parser.q[idx^])); idx^ += 1 {
-		if parser.q[idx^] == '\n' {
-			append(&parser.lf_vec, idx^)
+	for ; idx^ < u32(len(p.q)) && unicode.is_space(rune(p.q[idx^])); idx^ += 1 {
+		if p.q[idx^] == '\n' {
+			append(&p.lf_vec, idx^)
 		}
 	}
 }
 
 @(private="file")
-_get_name :: proc(parser: ^Parser, group: int, idx: ^u32) {
+_get_name :: proc(p: ^Parser, group: int, idx: ^u32) {
 	begin := idx^
-	for ; idx^ < u32(len(parser.q)) && (parser.q[idx^] == '_' ||
-	      unicode.is_digit(rune(parser.q[idx^])) ||
-	      unicode.is_alpha(rune(parser.q[idx^]))); idx^ += 1 {}
+	for ; idx^ < u32(len(p.q)) && (p.q[idx^] == '_' ||
+	      unicode.is_digit(rune(p.q[idx^])) ||
+	      unicode.is_alpha(rune(p.q[idx^]))); idx^ += 1 {}
 
-	type, ok := parser.tok_map[parser.q[begin:idx^]]
-	if !ok {
+	type, ret := bytemap.get(&p.tok_map, p.q[begin:idx^])
+	if ret == .Not_Found {
 		type = .Query_Name
 	}
 
-	append(&parser.tokens, Token {
+	append(&p.tokens, Token {
 		    type=type,
 		    group=u16(group),
 		    begin=begin,
@@ -472,13 +473,13 @@ _get_name :: proc(parser: ^Parser, group: int, idx: ^u32) {
 }
 
 @(private="file")
-_get_string :: proc(parser: ^Parser, group: int, idx: ^u32) -> Result {
+_get_string :: proc(p: ^Parser, group: int, idx: ^u32) -> Result {
 	idx^ += 1
 	real_begin := idx^
-	for ; idx^ < u32(len(parser.q)) && parser.q[idx^] != '\''; idx^ += 1 {}
+	for ; idx^ < u32(len(p.q)) && p.q[idx^] != '\''; idx^ += 1 {}
 
-	if idx^ >= u32(len(parser.q)) {
-		return lex_error(parser, idx^, "unmatched '\''")
+	if idx^ >= u32(len(p.q)) {
+		return lex_error(p, idx^, "unmatched '\''")
 	}
 
 	idx^ += 1
@@ -488,7 +489,7 @@ _get_string :: proc(parser: ^Parser, group: int, idx: ^u32) -> Result {
 		real_end = real_begin
 	}
 
-	append(&parser.tokens, Token {
+	append(&p.tokens, Token {
 		    type = .Literal_String,
 		    group=u16(group),
 		    begin = real_begin,
@@ -498,13 +499,13 @@ _get_string :: proc(parser: ^Parser, group: int, idx: ^u32) -> Result {
 }
 
 @(private="file")
-_get_qualified_name :: proc(parser: ^Parser, group: int, idx: ^u32) -> Result {
+_get_qualified_name :: proc(p: ^Parser, group: int, idx: ^u32) -> Result {
 	idx^ += 1
 	real_begin := idx^
-	for ; idx^ < u32(len(parser.q)) && parser.q[idx^] != ']'; idx^ += 1 {}
+	for ; idx^ < u32(len(p.q)) && p.q[idx^] != ']'; idx^ += 1 {}
 
-	if idx^ >= u32(len(parser.q)) {
-		return lex_error(parser, idx^, "unmatched '['")
+	if idx^ >= u32(len(p.q)) {
+		return lex_error(p, idx^, "unmatched '['")
 	}
 
 	idx^ += 1
@@ -514,7 +515,7 @@ _get_qualified_name :: proc(parser: ^Parser, group: int, idx: ^u32) -> Result {
 		real_end = real_begin
 	}
 
-	append(&parser.tokens, Token {
+	append(&p.tokens, Token {
 		    type = .Query_Name,
 		    group=u16(group),
 		    begin = real_begin,
@@ -524,17 +525,17 @@ _get_qualified_name :: proc(parser: ^Parser, group: int, idx: ^u32) -> Result {
 }
 
 @(private="file")
-_get_numeric :: proc(parser: ^Parser, group: int, idx: ^u32) -> Result {
+_get_numeric :: proc(p: ^Parser, group: int, idx: ^u32) -> Result {
 	/* TODO hex check here ? */
 
 	begin := idx^
 	is_float: bool
 
-	for ; idx^ < u32(len(parser.q)) &&
-	    (unicode.is_digit(rune(parser.q[idx^])) || parser.q[idx^] == '.'); idx^ += 1 {
-		if parser.q[idx^] == '.' {
+	for ; idx^ < u32(len(p.q)) &&
+	    (unicode.is_digit(rune(p.q[idx^])) || p.q[idx^] == '.'); idx^ += 1 {
+		if p.q[idx^] == '.' {
 			if is_float {
-				return lex_error(parser, idx^, "malformed decimal")
+				return lex_error(p, idx^, "malformed decimal")
 			}
 			is_float = true
 		}
@@ -545,7 +546,7 @@ _get_numeric :: proc(parser: ^Parser, group: int, idx: ^u32) -> Result {
 		type = .Literal_Float
 	}
 
-	append(&parser.tokens, Token {
+	append(&p.tokens, Token {
 		    type=type,
 		    group=u16(group),
 		    begin=begin,
@@ -555,16 +556,16 @@ _get_numeric :: proc(parser: ^Parser, group: int, idx: ^u32) -> Result {
 }
 
 @(private="file")
-_get_variable :: proc(parser: ^Parser, group: int, idx: ^u32) {
+_get_variable :: proc(p: ^Parser, group: int, idx: ^u32) {
 	begin := idx^
 	idx^ += 1
 
-	for ; parser.q[idx^] == '_' ||
-	      unicode.is_digit(rune(parser.q[idx^])) ||
-	      unicode.is_alpha(rune(parser.q[idx^])); idx^ += 1 {
+	for ; p.q[idx^] == '_' ||
+	      unicode.is_digit(rune(p.q[idx^])) ||
+	      unicode.is_alpha(rune(p.q[idx^])); idx^ += 1 {
 	}
 
-	append(&parser.tokens, Token {
+	append(&p.tokens, Token {
 		    type=.Query_Variable,
 		    group=u16(group),
 		    begin=begin,
@@ -572,24 +573,24 @@ _get_variable :: proc(parser: ^Parser, group: int, idx: ^u32) {
 }
 
 @(private="file")
-_get_block_comment :: proc(parser: ^Parser, group: int, idx: ^u32) -> Result {
+_get_block_comment :: proc(p: ^Parser, group: int, idx: ^u32) -> Result {
 	
 	begin := idx^
 
-	for ; idx^+1 < u32(len(parser.q)) && 
-	    !(parser.q[idx^] == '*' && parser.q[idx^+1] == '/'); idx^ += 1 {
-		if parser.q[idx^] == '\n' {
-			append(&parser.lf_vec, idx^)
+	for ; idx^+1 < u32(len(p.q)) && 
+	    !(p.q[idx^] == '*' && p.q[idx^+1] == '/'); idx^ += 1 {
+		if p.q[idx^] == '\n' {
+			append(&p.lf_vec, idx^)
 		}
 	}
 
-	if idx^+1 >= u32(len(parser.q)) {
-		return lex_error(parser, idx^, "unmatched `/*'")
+	if idx^+1 >= u32(len(p.q)) {
+		return lex_error(p, idx^, "unmatched `/*'")
 	}
 
 	idx^ += 2
 
-	append(&parser.tokens, Token {
+	append(&p.tokens, Token {
 		    type=.Query_Comment,
 		    group=u16(group),
 		    begin=begin,
@@ -599,18 +600,18 @@ _get_block_comment :: proc(parser: ^Parser, group: int, idx: ^u32) -> Result {
 }
 
 @(private="file")
-_get_line_comment :: proc(parser: ^Parser, group: int, idx: ^u32) -> Result {
+_get_line_comment :: proc(p: ^Parser, group: int, idx: ^u32) -> Result {
 	begin := idx^
-	offset := strings.index_byte(parser.q[idx^:], '\n')
+	offset := strings.index_byte(p.q[idx^:], '\n')
 	if offset == -1 {
-		idx^ = u32(len(parser.q))
+		idx^ = u32(len(p.q))
 	} else {
 		idx^ += u32(offset)
-		append(&parser.lf_vec, idx^)
+		append(&p.lf_vec, idx^)
 		idx^ += 1
 	}
 
-	append(&parser.tokens, Token {
+	append(&p.tokens, Token {
 		    type=.Query_Comment,
 		    group=u16(group),
 		    begin=begin,
@@ -620,39 +621,36 @@ _get_line_comment :: proc(parser: ^Parser, group: int, idx: ^u32) -> Result {
 }
 
 @(private="file")
-_get_symbol :: proc(parser: ^Parser, group: int, idx: ^u32) -> Result {
+_get_symbol :: proc(p: ^Parser, group: int, idx: ^u32) -> Result {
 	begin := idx^
 	//idx^ += 1
 
 	type : Token_Type
-	ok : bool
+	ret : bytemap.Result = .Not_Found
 
 	/* Check for 2 character symbols first */
-	if begin < u32(len(parser.q)) {
-		type, ok = parser.tok_map[parser.q[begin:begin+2]]
+	if begin < u32(len(p.q)) {
+		type, ret = bytemap.get(&p.tok_map, p.q[begin:begin+2])
 	}
 
-	if ok {
+	if ret == .Found {
 		#partial switch type {
 		case .Sym_Line_Comment:
-			return _get_line_comment(parser, group, idx)
+			return _get_line_comment(p, group, idx)
 		case .Sym_Block_Comment:
-			return _get_block_comment(parser, group, idx)
+			return _get_block_comment(p, group, idx)
 		}
-	}
-
-	if ok {
 		idx^ += 2
 	} else {
 		idx^ += 1
-		type, ok = parser.tok_map[parser.q[begin:idx^]]
+		type, ret = bytemap.get(&p.tok_map, p.q[begin:idx^])
 	}
 
-	if !ok {
-		return lex_error(parser, idx^, "invalid symbol")
+	if ret == .Not_Found {
+		return lex_error(p, idx^, "invalid symbol")
 	}
 
-	append(&parser.tokens, Token {
+	append(&p.tokens, Token {
 		    type=type,
 		    group=u16(group),
 		    begin=begin,
@@ -667,9 +665,9 @@ _is_symbol :: proc(c: u8) -> bool {
 }
 
 @(private = "file")
-_lex_tokenize :: proc(parser: ^Parser) -> Result {
+_lex_tokenize :: proc(p: ^Parser) -> Result {
 	i : u32 = 0
-	append(&parser.tokens, Token { type=.Query_Begin })
+	append(&p.tokens, Token { type=.Query_Begin })
 
 	group : int
 	group_stack : [dynamic]int
@@ -678,57 +676,57 @@ _lex_tokenize :: proc(parser: ^Parser) -> Result {
 
 	ret := 0
 
-	for ret == 0 && i < u32(len(parser.q)) {
+	for ret == 0 && i < u32(len(p.q)) {
 		tok_len := 0
 		switch {
-		case unicode.is_space(rune(parser.q[i])):
-			_skip_whitespace(parser, &i)
-		case parser.q[i] == '\'':
-			_get_string(parser, group, &i)
-		case parser.q[i] == '[':
-			_get_qualified_name(parser, group, &i) or_return
-		case unicode.is_digit(rune(parser.q[i])) ||
-		    (i+1 < u32(len(parser.q)) && unicode.is_digit(rune(parser.q[i]))):
-			_get_numeric(parser, group, &i) or_return
-		case parser.q[i] == '@':
-			_get_variable(parser, group, &i)
-		case parser.q[i] == '(':
+		case unicode.is_space(rune(p.q[i])):
+			_skip_whitespace(p, &i)
+		case p.q[i] == '\'':
+			_get_string(p, group, &i)
+		case p.q[i] == '[':
+			_get_qualified_name(p, group, &i) or_return
+		case unicode.is_digit(rune(p.q[i])) ||
+		    (i+1 < u32(len(p.q)) && unicode.is_digit(rune(p.q[i]))):
+			_get_numeric(p, group, &i) or_return
+		case p.q[i] == '@':
+			_get_variable(p, group, &i)
+		case p.q[i] == '(':
 			group += 1
-			bit_array.set(&parser.consumed, len(parser.tokens))
+			bit_array.set(&p.consumed, len(p.tokens))
 			append(&group_stack, group)
-			append(&parser.tokens, Token {type=.Sym_Lparen, group=u16(group), begin=i, len=1})
+			append(&p.tokens, Token {type=.Sym_Lparen, group=u16(group), begin=i, len=1})
 			i += 1
-		case parser.q[i] == ')':
+		case p.q[i] == ')':
 			if len(group_stack) == 1 {
-				return lex_error(parser, i, "unmatched ')'")
+				return lex_error(p, i, "unmatched ')'")
 			}
-			bit_array.set(&parser.consumed, len(parser.tokens))
-			append(&parser.tokens, Token {type=.Sym_Rparen, group=u16(group), begin=i, len=1})
+			bit_array.set(&p.consumed, len(p.tokens))
+			append(&p.tokens, Token {type=.Sym_Rparen, group=u16(group), begin=i, len=1})
 			i += 1
 			pop(&group_stack)
 			group = group_stack[len(group_stack)-1]
-		case _is_symbol(parser.q[i]):
-			_get_symbol(parser, group, &i) or_return
-		case parser.q[i] == '_' ||
-		    unicode.is_digit(rune(parser.q[i])) ||
-		    unicode.is_alpha(rune(parser.q[i])):
-			_get_name(parser, group, &i)
+		case _is_symbol(p.q[i]):
+			_get_symbol(p, group, &i) or_return
+		case p.q[i] == '_' ||
+		    unicode.is_digit(rune(p.q[i])) ||
+		    unicode.is_alpha(rune(p.q[i])):
+			_get_name(p, group, &i)
 		case:
-			return lex_error(parser, i)
+			return lex_error(p, i)
 		}
 	}
 
 	if len(group_stack) > 1 {
-		return lex_error(parser, i, "unmatched '('")
+		return lex_error(p, i, "unmatched '('")
 	}
 
-	append(&parser.tokens, Token { type = .Query_End })
+	append(&p.tokens, Token { type = .Query_End })
 
 	/* Dump tokens */
-	//for tok in parser.tokens {
+	//for tok in p.tokens {
 	//	if enum_name, ok := fmt.enum_value_to_string(tok.type); ok {
 	//		if tok.len > 0 {
-	//			fmt.println(enum_name, parser.q[tok.begin:tok.begin+tok.len])
+	//			fmt.println(enum_name, p.q[tok.begin:tok.begin+tok.len])
 	//		} else {
 	//			fmt.println(enum_name)
 	//		}
@@ -740,89 +738,88 @@ _lex_tokenize :: proc(parser: ^Parser) -> Result {
 
 @(test)
 lex_error_check :: proc(t: ^testing.T) {
-	parser := make_parser()
+	p := make_parser()
 
 	/* Unmatched tokens */
-	parser.q = "select a,b,c,[ntll from foo where 1=1"
-	testing.expect_value(t, lex_lex(&parser), Result.Error)
+	p.q = "select a,b,c,[ntll from foo where 1=1"
+	testing.expect_value(t, lex_lex(&p), Result.Error)
 
-	parser.q = "select a,b,c,ntll] from foo where 1=1"
-	testing.expect_value(t, lex_lex(&parser), Result.Error)
+	p.q = "select a,b,c,ntll] from foo where 1=1"
+	testing.expect_value(t, lex_lex(&p), Result.Error)
 
-	parser.q = "select 124+35*24 / (124-2 from [foo] where 1<>2"
-	testing.expect_value(t, lex_lex(&parser), Result.Error)
+	p.q = "select 124+35*24 / (124-2 from [foo] where 1<>2"
+	testing.expect_value(t, lex_lex(&p), Result.Error)
 
-	parser.q = "select 124+35*24 / (124-2))"
-	testing.expect_value(t, lex_lex(&parser), Result.Error)
+	p.q = "select 124+35*24 / (124-2))"
+	testing.expect_value(t, lex_lex(&p), Result.Error)
 
-	parser.q = "select /* a comment * / 1,2 from foo"
-	testing.expect_value(t, lex_lex(&parser), Result.Error)
+	p.q = "select /* a comment * / 1,2 from foo"
+	testing.expect_value(t, lex_lex(&p), Result.Error)
 	
-	/* Will throw parser error as multiply, divide */
-	//parser.q = "select / * a comment */ 1,2 from foo"
-	//testing.expect_value(t, lex_lex(&parser), Result.Error)
+	/* Will throw p error as multiply, divide */
+	//p.q = "select / * a comment */ 1,2 from foo"
+	//testing.expect_value(t, lex_lex(&p), Result.Error)
 
 	/* Illegal symbols */
-	parser.q = "select $var from foo join foo on 1=1"
-	testing.expect_value(t, lex_lex(&parser), Result.Error)
+	p.q = "select $var from foo join foo on 1=1"
+	testing.expect_value(t, lex_lex(&p), Result.Error)
 
-	parser.q = "select `col` from foo join foo on 1=1"
-	testing.expect_value(t, lex_lex(&parser), Result.Error)
+	p.q = "select `col` from foo join foo on 1=1"
+	testing.expect_value(t, lex_lex(&p), Result.Error)
 
 	/* Malformed number */
-	parser.q = "select 1234.1234.1234 from foo join foo on 1=1"
-	testing.expect_value(t, lex_lex(&parser), Result.Error)
+	p.q = "select 1234.1234.1234 from foo join foo on 1=1"
+	testing.expect_value(t, lex_lex(&p), Result.Error)
 
 	/* Oh shit this is actually legal in SQL Server... */
-	//parser.q = "select 1234shnt from foo join foo on 1=1"
-	//testing.expect_value(t, lex_lex(&parser), Result.Error)
+	//p.q = "select 1234shnt from foo join foo on 1=1"
+	//testing.expect_value(t, lex_lex(&p), Result.Error)
 
-	destroy_parser(&parser)
+	destroy_parser(&p)
 }
 
 @(test)
 lex_check :: proc(t: ^testing.T) {
-	parser := make_parser()
+	p := make_parser()
 
 	/* For the following tests...
-	 * len(parser.tokens) = token_count + 2
+	 * len(p.tokens) = token_count + 2
 	 * This is because every query begins and ends 
 	 * with .Query_Begin and .Query_End
 	 */
 	
 	//         01      2   3    4   5    6   7  890 1
-	parser.q = "select col from foo join foo on 1=1"
-	testing.expect_value(t, lex_lex(&parser), Result.Ok)
-	testing.expect_value(t, len(parser.tokens), 12)
-	testing.expect_value(t, parser.tokens[0].type, Token_Type.Query_Begin)
-	testing.expect_value(t, parser.tokens[1].type, Token_Type.Select)
-	testing.expect_value(t, parser.tokens[2].type, Token_Type.Query_Name)
-	testing.expect_value(t, parser.tokens[3].type, Token_Type.From)
-	testing.expect_value(t, parser.tokens[4].type, Token_Type.Query_Name)
-	testing.expect_value(t, parser.tokens[5].type, Token_Type.Join)
-	testing.expect_value(t, parser.tokens[6].type, Token_Type.Query_Name)
-	testing.expect_value(t, parser.tokens[7].type, Token_Type.On)
-	testing.expect_value(t, parser.tokens[8].type, Token_Type.Literal_Int)
-	testing.expect_value(t, parser.tokens[9].type, Token_Type.Sym_Eq)
-	testing.expect_value(t, parser.tokens[10].type, Token_Type.Literal_Int)
-	testing.expect_value(t, parser.tokens[11].type, Token_Type.Query_End)
+	p.q = "select col from foo join foo on 1=1"
+	testing.expect_value(t, lex_lex(&p), Result.Ok)
+	testing.expect_value(t, len(p.tokens), 12)
+	testing.expect_value(t, p.tokens[0].type, Token_Type.Query_Begin)
+	testing.expect_value(t, p.tokens[1].type, Token_Type.Select)
+	testing.expect_value(t, p.tokens[2].type, Token_Type.Query_Name)
+	testing.expect_value(t, p.tokens[3].type, Token_Type.From)
+	testing.expect_value(t, p.tokens[4].type, Token_Type.Query_Name)
+	testing.expect_value(t, p.tokens[5].type, Token_Type.Join)
+	testing.expect_value(t, p.tokens[6].type, Token_Type.Query_Name)
+	testing.expect_value(t, p.tokens[7].type, Token_Type.On)
+	testing.expect_value(t, p.tokens[8].type, Token_Type.Literal_Int)
+	testing.expect_value(t, p.tokens[9].type, Token_Type.Sym_Eq)
+	testing.expect_value(t, p.tokens[10].type, Token_Type.Literal_Int)
+	testing.expect_value(t, p.tokens[11].type, Token_Type.Query_End)
 
 	//0      1
 	//      2      34 5 6 7 8 9 01 234567 8
-
 	//      9    0   1
 	//23
 	//4  56      78 9
-	parser.q = `
+	p.q = `
 	select (
 		select (1 + 2 * 5 + (33-(1))) [bar baz]
 		from foo f
 	) f 
 	from (select 1) x
 	`
-	testing.expect_value(t, lex_lex(&parser), Result.Ok)
-	testing.expect_value(t, len(parser.tokens), 32)
+	testing.expect_value(t, lex_lex(&p), Result.Ok)
+	testing.expect_value(t, len(p.tokens), 32)
 
-	destroy_parser(&parser)
+	destroy_parser(&p)
 }
 

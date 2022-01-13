@@ -58,17 +58,29 @@ Function_Type :: enum {
 	User_Name,
 }
 
+Function_Call :: proc(fn_expr: ^Expression, data: ^Data, recs: []Record) -> Result
+
 Expr_Function :: struct {
+	call__: Function_Call,
 	args: [dynamic]Expression,
 	min_args: u16,
 	max_args: u16,
 	type: Function_Type,
+	data_type: Data_Type,
 }
 
 make_function :: proc(fn_type: Function_Type) -> Expr_Function {
 	return Expr_Function {
 		type = fn_type,
+		data_type = .String,
 	}
+}
+
+destroy_function :: proc(fn: ^Expr_Function) {
+	if fn == nil {
+		return
+	}
+	delete(fn.args)
 }
 
 function_add_expression :: proc(fn: ^Expr_Function, expr: ^Expression) -> ^Expression {

@@ -32,7 +32,7 @@ Query :: struct {
 	into_table_name: string,
 	preview_text: string,
 	state: ^Listener_State,
-	top_count: u64,
+	top_count: i64,
 	top_expr: ^Expression,
 	next_idx_ref: ^u32,
 	next_idx: u32,
@@ -49,7 +49,7 @@ Query :: struct {
 new_query :: proc(sub_id: i16) -> ^Query {
 	q := new(Query)
 	q^ = {
-		top_count = bits.U64_MAX,
+		top_count = bits.I64_MAX,
 		into_table_var = -1,
 		sub_id = sub_id,
 	}
@@ -136,7 +136,7 @@ query_new_logic_item :: proc(q: ^Query, type: Logic_Group_Type) -> ^Logic_Group 
 	l_stack := &q.state.l_stack
 
 	parent := l_stack[len(l_stack) - 1]
-	if parent.type == .Unset {
+	if parent.type == nil {
 		lg = parent
 		lg.type = type
 	} else if parent.items[0] == nil {

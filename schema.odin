@@ -1,27 +1,87 @@
 package streamql
 
+import "core:math/bits"
 import "core:strings"
 import "core:fmt"
 import "core:os"
 
+import "bytemap"
+
 Schema_Props :: enum {
 	Is_Var,
+	Is_Default,
+	Is_Preresolved,
+	Delim_Set,
+}
+
+Schema_Item :: struct {
+	name: string,
+	loc: i32,
+	width: i32,
 }
 
 Schema :: struct {
+	reader: Reader,
+	layout: [dynamic]Schema_Item,
+	item_map: bytemap.Multi(i32),
 	name: string,
+	schema_path: string,
 	delim: string,
 	rec_term: string,
+	io: Io,
+	write_io: Io,
 	props: bit_set[Schema_Props],
 }
 
 make_schema :: proc() -> Schema {
-	return Schema {}
+	return Schema {
+		props = {.Is_Default},
+	}
 }
 
 destroy_schema :: proc(s: ^Schema) {
 	delete(s.delim)
 	delete(s.rec_term)
+}
+
+schema_copy :: proc(dest: ^Schema, src: ^Schema) {
+	if src == nil {
+		if .Delim_Set not_in src.props {
+			schema_set_delim(dest, ",")
+		}
+		dest.io = .Delimited
+		dest.write_io = .Delimited
+		dest.props += {.Is_Default}
+		return
+	}
+
+	if .Delim_Set not_in src.props {
+		schema_set_delim(dest, src.delim)
+	}
+
+	dest.write_io = src.write_io
+	if src.io == nil {
+		dest.io = src.write_io
+	} else {
+		dest.io = src.io
+	}
+	if .Is_Default in src.props {
+		dest.props += {.Is_Default}
+	} else {
+		dest.props -= {.Is_Default}
+	}
+}
+
+schema_get_item :: proc(s: ^Schema, key: string) -> (Schema_Item, Result) {
+	indices, found := bytemap.get(&s.item_map, key)
+	if found == .Not_Found {
+		return Schema_Item { loc = -1 }, .Ok
+	}
+	if len(indices) > 1 {
+		fmt.fprintf(os.stderr, "expression `%s' ambiguous\n", key)
+		return Schema_Item { loc = -1 }, .Error
+	}
+	return s.layout[indices[0]], .Ok
 }
 
 schema_resolve :: proc(sql: ^Streamql) -> Result {
@@ -40,7 +100,7 @@ schema_resolve :: proc(sql: ^Streamql) -> Result {
 			op_set_rec_term(&q.operation, sql.rec_term)
 		}
 
-		_resolve_query(sql, q, .Undefined)
+		_resolve_query(sql, q)
 	}
 
 	return .Ok
@@ -62,7 +122,37 @@ schema_set_rec_term :: proc(s: ^Schema, rec_term: string) {
 	s.rec_term = strings.clone(rec_term)
 }
 
-@(private = "file")
+schema_assign_header :: proc(src: ^Source, rec: ^Record, src_idx: int) -> Result {
+	return not_implemented()
+}
+
+schema_preflight :: proc(s: ^Schema) {
+	//if s == nil {
+	//	return
+	//}
+
+	/* May be called already from order.odin */
+	if len(s.item_map.values) > 0 {
+		return
+	}
+
+	s.item_map = bytemap.make_multi(i32, u64(len(s.layout) * 2), {.No_Case})
+
+	for it, i in &s.layout {
+		it.loc = i32(i)
+		bytemap.set(&s.item_map, it.name, it.loc)
+	}
+
+	if .Delim_Set not_in s.props {
+		schema_set_delim(s, ",");
+	}
+
+	if len(s.rec_term) == 0 {
+		s.rec_term = "\n"
+	}
+}
+
+@private
 _resolve_schema_paths :: proc(sql: ^Streamql) -> Result {
 	/* Should only ever do this once */
 	if ._Schema_Paths_Resolved in sql.config {
@@ -88,18 +178,33 @@ _resolve_schema_paths :: proc(sql: ^Streamql) -> Result {
 	return .Ok
 }
 
-@(private = "file")
+@private
 _evaluate_if_const :: proc(expr: ^Expression) -> Result {
-	return not_implemented()
+	fn := &expr.data.(Expr_Function)
+	for expr in fn.args {
+		if _, is_const := expr.data.(Expr_Constant); !is_const {
+			return .Ok
+		}
+	}
+
+	expr.fn_bak = new(Expr_Function)
+	expr.fn_bak^ = fn^
+
+	new_data: Data
+	fn.call__(expr, &new_data, nil) or_return
+	expr.data = Expr_Constant(new_data)
+
+	return .Ok
 }
 
+@private
 _try_assign_source :: proc(col: ^Expr_Column_Name, src: ^Source) -> int {
 	not_implemented()
 	return 0
 }
 
-@(private = "file")
-_assign_expression :: proc(expr: ^Expression, sources: []Source, strict: bool) -> Result {
+@private
+_assign_expression :: proc(expr: ^Expression, sources: []Source, strict: bool = true) -> Result {
 	matches := 0
 	sources := sources
 
@@ -157,8 +262,8 @@ _assign_expression :: proc(expr: ^Expression, sources: []Source, strict: bool) -
 	return .Ok
 }
 
-@(private = "file")
-_assign_expressions :: proc(exprs: []Expression, sources: []Source, strict: bool) -> Result {
+@private
+_assign_expressions :: proc(exprs: []Expression, sources: []Source, strict: bool = true) -> Result {
 	exprs := exprs
 	for e in &exprs {
 		_assign_expression(&e, sources, strict) or_return
@@ -166,8 +271,210 @@ _assign_expressions :: proc(exprs: []Expression, sources: []Source, strict: bool
 	return .Ok
 }
 
-@(private = "file")
-_resolve_query :: proc(sql: ^Streamql, q: ^Query, union_io: Io) -> Result {
+@private
+_assign_logic_group_expressions :: proc(lg: ^Logic_Group, sources: []Source, strict: bool = true) -> Result {
+	if lg == nil {
+		return .Ok
+	}
+
+	switch lg.type {
+	case .And:
+		fallthrough
+	case .Or:
+		_assign_logic_group_expressions(lg.items[0], sources, strict) or_return
+		return _assign_logic_group_expressions(lg.items[1], sources, strict)
+	case .Not:
+		return _assign_logic_group_expressions(lg.items[0], sources, strict)
+	case .Predicate:
+		fallthrough
+	case .Predicate_Negated:
+		_assign_expression(&lg.condition.exprs[0], sources, strict) or_return
+		return _assign_expression(&lg.condition.exprs[1], sources, strict)
+	}
+
+	return .Ok
+}
+
+@private
+_load_schema_by_name :: proc(sql: ^Streamql, src: ^Source, src_idx: int) -> Result {
+	return not_implemented()
+}
+
+@private
+_resolve_file :: proc(sql: ^Streamql, q: ^Query, src: ^Source) -> Result {
+	return not_implemented()
+}
+
+
+@private
+_resolve_source :: proc(sql: ^Streamql, q: ^Query, src: ^Source, src_idx: int) -> Result {
+	if len(src.schema.item_map.values) != 0 {
+		return .Ok
+	}
+
+	if src.schema.name == "" && sql.default_schema != "" {
+		src.schema.name = strings.clone(sql.default_schema)
+	}
+	if src.schema.name != "" {
+		/* TODO: case_insensitive */
+		if src.schema.name != "default" {
+			src.schema.props -= {.Is_Default}
+			src.schema.reader.skip_rows = 0
+			_load_schema_by_name(sql, src, src_idx) or_return
+		}
+	}
+
+	switch v in src.data {
+	case ^Query:
+		//if src.alias == "" { throw for missing alias?? }
+		_resolve_query(sql, v)
+		select := v.operation.(Select)
+		src.schema = select.schema
+		src.schema.props += {.Is_Preresolved}
+		src.schema.reader.type = .Subquery
+	case string:
+		_resolve_file(sql, q, src) or_return
+		if .Is_Default in src.schema.props {
+			src.schema.reader.type = .Delimited
+		}
+	}
+
+	reader_assign(sql, src) or_return
+
+	#partial switch src.schema.reader.type {
+	case .Fixed:
+		schema_preflight(&src.schema)
+		return .Ok
+	case .Subquery:
+		return .Ok
+	}
+
+	rec: Record
+	src.schema.reader.max_idx = bits.I32_MAX
+	src.schema.reader.get_record__(&src.schema.reader, &rec)
+	src.schema.reader.max_idx = 0
+
+	if .Is_Stdin not_in src.props {
+		src.schema.reader.reset__(&src.schema.reader)
+	}
+
+	/* if we've made it this far, we want to try
+	 * and determine schema by reading the top
+	 * row of the file and assume a delimited
+	 * list of field names.
+	 */
+	if .Is_Default in src.schema.props {
+		if .Is_Preresolved not_in src.schema.props {
+			schema_assign_header(src, &rec, src_idx)
+		}
+	} else {
+		new_size := 1 if len(rec.fields) == 0 else len(rec.fields)
+		for i := len(src.schema.layout); i >= new_size; i -= 1 {
+			item := pop(&src.schema.layout)
+			delete(item.name)
+		}
+	}
+	
+	schema_preflight(&src.schema)
+
+	if .Is_Default in src.schema.props || .Is_Stdin in src.props {
+		destroy_record(&rec)
+	} else {
+		src.schema.reader.first_rec = rec
+	}
+
+	return .Ok
+}
+
+@private
+_get_join_side :: proc(expr: ^Expression, right_idx: int) -> Join_Side {
+	#partial switch v in &expr.data {
+	case Expr_Full_Record:
+		return int(v) < right_idx ? .Left : .Right
+	case Expr_Column_Name:
+		// TODO: subquery_src_idx??
+		return int(v.src_idx) < right_idx ? .Left : .Right
+	case Expr_Function:
+		side0: Join_Side
+		for e in &v.args {
+			side1 := _get_join_side(&e, right_idx)
+			if side0 == nil {
+				side0 = side1
+			} else if side1 == nil {
+				continue
+			} else if side0 != side1 {
+				return .Mixed
+			}
+		}
+		return side0
+	}
+	return nil
+}
+
+@private
+_resolve_join_conditions :: proc(right_src: ^Source, right_idx: int) {
+	if right_src.join_logic == nil || len(right_src.joinable_logic) == 0 {
+		return
+	}
+
+	for l in right_src.joinable_logic {
+		side0 := _get_join_side(&l.exprs[0], right_idx)
+		if side0 == .Mixed {
+			continue
+		}
+		side1 := _get_join_side(&l.exprs[1], right_idx)
+		if side1 == .Mixed || side0 == side1 {
+			continue
+		}
+		if !logic_must_be_true(right_src.join_logic, l) {
+			continue
+		}
+
+		right_src.join_logic.join_logic = l
+		join := new_hash_join()
+		if side0 == .Right {
+			join.right_expr = &l.exprs[0]
+			join.left_expr = &l.exprs[1]
+		} else {
+			join.right_expr = &l.exprs[1]
+			join.left_expr = &l.exprs[0]
+		}
+		join.comp_type = data_determine_type(l.exprs[0].data_type, l.exprs[1].data_type)
+		right_src.join_data = join
+		break
+	}
+}
+
+@private
+_resolve_unions :: proc(sql: ^Streamql, q: ^Query) -> Result {
+	if len(q.unions) == 0 {
+		return .Ok
+	}
+	return not_implemented()
+}
+
+@private
+_resolve_asterisk :: proc(exprs: []Expression, sources: []Source) -> Result {
+	return not_implemented()
+}
+
+@private
+_map_groups :: proc(sql: ^Streamql, q: ^Query) -> Result {
+	return not_implemented()
+}
+
+@private
+_group_validate_having :: proc(q: ^Query, is_summarize: bool) -> Result {
+	return not_implemented()
+}
+
+@private
+_group_validation :: proc(q: ^Query, exprs, op_exprs: []Expression, is_summarize: bool) -> Result {
+	return not_implemented()
+}
+
+@private
+_resolve_query :: proc(sql: ^Streamql, q: ^Query, union_io: Io = nil) -> Result {
 	/* First, let's resolve any subquery expressions.
 	 * These should be constant values and are not
 	 * tied to any parent queries
@@ -176,10 +483,170 @@ _resolve_query :: proc(sql: ^Streamql, q: ^Query, union_io: Io) -> Result {
 		_resolve_query(sql, sub, union_io)
 	}
 
+	is_strict := .Strict in sql.config
+
 	/* Top expression */
 	if q.top_expr != nil {
-		/* TODO: allow non-const top_expr */
+		_assign_expression(q.top_expr, nil, is_strict) or_return
+		if _, is_const := q.top_expr.data.(Expr_Constant); !is_const {
+			fmt.fprintf(os.stderr, "Could not resolve TOP expression\n")
+			return .Error
+		}
+		data := Data(q.top_expr.data.(Expr_Constant))
+		val, is_int := data.(i64)
+		if !is_int {
+			fmt.fprintf(os.stderr, "Input to TOP clause must be an integer\n")
+			return .Error
+		}
+		if val < 0 {
+			fmt.fprintf(os.stderr, "Input to TOP clause cannot be negative\n")
+			return .Error
+		}
 
+		q.top_count = val
 	}
+
+	/* If there is an order by, make sure NOT to send top_count
+	 * to the operation. However, if there is a union, this does
+	 * not apply.  If there is a union, the top count belongs to
+	 * the operation (select can be assumed). The only goal is to
+	 * make sure ALL the selected records are ordered
+	 */
+	if q.orderby != nil && len(q.unions) == 0 {
+		q.orderby.top_count = q.top_count
+	} else {
+		op_set_top_count(&q.operation, q.top_count)
+	}
+
+	/* Now, we should verify that all sources
+	 * exist and populate schemas.  As we loop, we
+	 * resolve the expressions that are listed in join
+	 * clauses because of the following caveat:
+	 *
+	 * SELECT *
+	 * FROM T1
+	 * JOIN T2 ON T1.FOO = T3.FOO -- Cannot read T3 yet!
+	 * JOIN T3 ON T2.FOO = T3.FOO
+	 */
+	for src, i in &q.sources {
+		_resolve_source(sql, q, &src, i) or_return
+		source_resolve_schema(sql, &src) or_return
+
+		if union_io != nil {
+			op_get_schema(&q.operation).write_io = union_io
+		} else {
+			op_set_schema(&q.operation, &src.schema)
+		}
+
+		if src.join_logic != nil {
+			_assign_logic_group_expressions(src.join_logic, q.sources[:i+1], is_strict) or_return
+		}
+
+		if i > 0 && .Force_Cartesian not_in sql.config {
+			_resolve_join_conditions(&src, i)
+		}
+	}
+
+	op_schema := op_get_schema(&q.operation)
+	if op_schema != nil && op_schema.write_io == nil {
+		op_set_schema(&q.operation, nil)
+	}
+
+	/* Where clause */
+	_assign_logic_group_expressions(q.where_, q.sources[:], is_strict) or_return
+
+	/* Validate operation expressions */
+	op_exprs := op_get_expressions(&q.operation)
+	if _, is_select := q.operation.(Select); is_select {
+		_resolve_asterisk(op_exprs, q.sources[:]) or_return
+	}
+	_assign_expressions(op_exprs, q.sources[:], is_strict) or_return
+
+	op_add_exprs := op_get_additional_expressions(&q.operation)
+	_assign_expressions(op_add_exprs, q.sources[:], is_strict) or_return
+
+	/* Validate HAVING expressions */
+	_assign_logic_group_expressions(q.having, q.sources[:], is_strict) or_return
+
+	/* Validate ORDER BY expressions */
+	order_exprs: []Expression
+	if q.orderby != nil {
+		order_preresolve(q.orderby, &q.operation.(Select), q.sources[:]) or_return
+		/* may have changed in preresolve */
+		order_exprs = q.orderby.expressions[:]
+		_assign_expressions(order_exprs, q.sources[:], is_strict) or_return
+	}
+
+	/* Do GROUP BY last. There are less caveats having
+	 * waited until everything else is resolved
+	 */
+	if q.groupby != nil {
+		_map_groups(sql, q) or_return
+
+		is_summarize := .Summarize in sql.config
+
+		/* Now that we have mapped the groups, we must
+		 * re-resolve each operation, HAVING and ORDER BY
+		 * expression to a group
+		 */
+		_group_validation(q, op_exprs, nil, is_summarize) or_return
+		_group_validate_having(q, is_summarize) or_return
+		_group_validation(q, order_exprs, op_exprs, is_summarize) or_return
+	}
+
+	_resolve_unions(sql, q) or_return
+	op_writer_init(q) or_return
+
+	if q.groupby == nil && q.orderby != nil {
+		/* This is normally handled during group processing,
+		 * but if there is no GROUP BY, just assign preresolved
+		 * ORDER BY expressions.
+		 */
+		for e in &order_exprs {
+			expr_ref, is_ref := e.data.(Expr_Reference)
+			if !is_ref {
+				continue // ???????
+			}
+			// TODO
+			//matched := op_exprs
+		}
+	}
+
+	schema_preflight(op_schema)
+
+	if q.into_table_name == "" {
+		return .Ok
+	}
+
+	/* If this query will be writing changes to the file system,
+	 * we need to be aware of this when parsing future queries.
+	 * These are mapped as absolute paths. First check that the
+	 * file exists. If it doesn't, create it now so that realpath
+	 * works. Creating the file also has the (undesireable?) affect
+	 * of making fuzzy file discovery possible on a file that did
+	 * not previously exist. TODO
+	 */
+	if !os.is_file(q.into_table_name) {
+		/* NOTE: We may enter this block for a number of reasons.
+		 *       We will rely on open for catching errors.
+		 */
+		fd, err := os.open(q.into_table_name, os.O_WRONLY | os.O_CREATE | os.O_TRUNC, 0o664)
+		if err != os.ERROR_NONE {
+			fmt.fprintf(os.stderr, "failed to create file `%s'", q.into_table_name)
+			return .Error
+		}
+		err = os.close(fd)
+		if err != os.ERROR_NONE {
+			fmt.fprintf(os.stderr, "failed to close file `%s'", q.into_table_name)
+			return .Error
+		}
+	} else if _, is_sel := q.operation.(Select); is_sel && .Overwrite in sql.config {
+		fmt.fprintf(os.stderr, "cannot SELECT INTO: `%s' already exists\n", q.into_table_name)
+		return .Error
+	}
+	path, err := os.absolute_path_from_relative(q.into_table_name)
+
+	sql.schema_map[path] = op_schema
+
 	return .Ok
 }

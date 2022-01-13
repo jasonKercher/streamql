@@ -5,6 +5,7 @@ import "core:strings"
 Select :: struct {
 	schema: Schema,
 	expressions: [dynamic]Expression,
+	top_count: i64,
 }
 
 make_select :: proc() -> Select {

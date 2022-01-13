@@ -1,7 +1,6 @@
 package streamql
 
 Logic_Group_Type :: enum {
-	Unset,
 	And,
 	Or,
 	Not,
@@ -19,9 +18,6 @@ Logic_Group :: struct {
 
 new_logic_group :: proc(type: Logic_Group_Type) -> ^Logic_Group {
 	lg := new(Logic_Group)
-	lg^ = {
-		type = .Unset,
-	}
 	return lg
 }
 
@@ -64,4 +60,8 @@ logic_add_expression :: proc(l: ^Logic, expr: ^Expression) -> ^Expression {
 	}
 	l.exprs[1] = expr^
 	return &l.exprs[1]
+}
+
+logic_must_be_true :: proc(lg: ^Logic_Group, l: ^Logic) -> bool {
+	return false
 }

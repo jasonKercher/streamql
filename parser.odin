@@ -1,17 +1,18 @@
 package streamql
 
+import "bytemap"
+
 import "core:fmt"
 import "core:os"
 import "core:math/bits"
 import "core:container/bit_array"
-
 import "core:testing"
 
 Parser :: struct {
 	q:       string,
 	lf_vec:  [dynamic]u32,
 	tokens:  [dynamic]Token,
-	tok_map: map[string]Token_Type,
+	tok_map: bytemap.Map(Token_Type),
 	consumed:bit_array.Bit_Array,
 	curr:    u32,
 	q_count: u32,
@@ -25,21 +26,18 @@ Func_Group :: enum {
 }
 
 make_parser :: proc() -> Parser {
-	/* Current length of token map is 185. Looks like the maps resize
-	 * at 3/4 full, so that puts us at 247 in order to not resize.
-	 */
 	return Parser {
 		lf_vec = make([dynamic]u32),
 		tokens = make([dynamic]Token),
-		tok_map = make(map[string]Token_Type, 256),
-		consumed = bit_array.create(8), /* why arg here? */
+		tok_map = bytemap.make_map(Token_Type, 256, {.No_Case}),
+		consumed = bit_array.create(8),      /* why arg here? */
 	}
 }
 
 destroy_parser :: proc(p: ^Parser) {
 	delete(p.lf_vec)
 	delete(p.tokens)
-	delete(p.tok_map)
+	bytemap.destroy(&p.tok_map)
 }
 
 parse_get_pos :: proc(p: ^Parser, idx: u32) -> (line, off: u32) {

@@ -43,9 +43,11 @@ Expression_Data :: union {
 
 Expression :: struct {
 	buf: strings.Builder,
+	fn_bak: ^Expr_Function,
 	alias: string,
 	table_name: string,
 	data: Expression_Data,
+	data_type: Data_Type,
 	props: bit_set[Expression_Props],
 }
 
@@ -145,6 +147,12 @@ make_expression :: proc{
 	make_expression_var,
 }
 
+destroy_expression :: proc(expr: ^Expression) {
+	strings.destroy_builder(&expr.buf)
+	destroy_function(expr.fn_bak)
+	free(expr.fn_bak)
+}
+
 expression_cat_description :: proc(expr: ^Expression, b: ^strings.Builder) {
 	switch v in expr.data {
 	case Expr_Grouping:
@@ -198,4 +206,16 @@ expression_cat_description :: proc(expr: ^Expression, b: ^strings.Builder) {
 	case Expr_Aggregate:
 		strings.write_string(b, "[aggregate]")
 	}
+}
+
+expression_get_int :: proc(expr: ^Expression, recs: []Record = nil) -> (i64, Result) {
+	return 0, .Ok
+}
+
+expression_get_float :: proc(expr: ^Expression, recs: []Record = nil) -> (f64, Result) {
+	return 0, .Ok
+}
+
+expression_get_string :: proc(expr: ^Expression, recs: []Record = nil) -> (string, Result) {
+	return "", .Ok
 }

@@ -7,6 +7,7 @@ Update :: struct {
 	schema: Schema,
 	columns: [dynamic]Expression,
 	values: [dynamic]Expression,
+	top_count: i64,
 }
 
 update_add_expression :: proc(u: ^Update, expr: ^Expression) -> (^Expression, Result) {
