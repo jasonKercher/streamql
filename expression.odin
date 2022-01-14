@@ -12,7 +12,7 @@ Expression_Props :: enum u8 {
 Expr_Full_Record :: distinct i32
 Expr_Row_Number ::  distinct i64
 Expr_Reference :: distinct ^Expression
-Expr_Asterisk :: distinct string
+Expr_Asterisk :: distinct i32
 Expr_Constant :: distinct Data
 Expr_Grouping :: distinct ^Expression
 Expr_Subquery :: distinct ^Query

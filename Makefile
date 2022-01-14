@@ -1,11 +1,12 @@
 all: streamql
+SRC = $(wildcard ./*.odin)
 
 clean:
 	rm -v streamql
 
-streamql:
+streamql: $(SRC)
 	odin build ./ -out:streamql -debug -opt:0
 
-release:
+release: $(SRC)
 	odin build ./ -out:streamql -o:fast
 

@@ -23,3 +23,7 @@ new_hash_join :: proc() -> ^Hash_Join {
 	hj.state = .Left
 	return hj
 }
+
+hash_join_init :: proc(src: ^Source) {
+	not_implemented()
+}

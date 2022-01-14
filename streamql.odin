@@ -21,7 +21,7 @@ Result :: enum {
 	Error,
 }
 
-@(private)
+@private
 _Branch_State :: enum {
 	No_Branch,
 	Expect_Expr,
@@ -71,6 +71,11 @@ generate_plans :: proc(sql: ^Streamql, query_str: string) -> Result {
 		reset(sql)
 		return .Error
 	}
+	if plan_build(sql) == .Error {
+		reset(sql)
+		return .Error
+	}
+
 
 	return .Ok
 }

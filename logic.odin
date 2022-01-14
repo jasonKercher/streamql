@@ -1,5 +1,7 @@
 package streamql
 
+import "bytemap"
+
 Logic_Group_Type :: enum {
 	And,
 	Or,
@@ -21,22 +23,32 @@ new_logic_group :: proc(type: Logic_Group_Type) -> ^Logic_Group {
 	return lg
 }
 
+free_logic_group :: proc(lg: ^Logic_Group) {
+	free(lg)
+}
+
+logic_group_get_condition_count :: proc(lg: ^Logic_Group) -> int {
+	not_implemented()
+	return -1
+}
+
 Comparison :: enum {
 	None = -3,
-	False,
-	True,
-	Eq,
-	Ne,
-	Gt,
-	Ge,
-	Lt,
-	Le,
-	In,
-	Not_In,
-	Sub_In,
-	Like,
-	Not_Like,
-	Null,
+	False = -2,
+	True = -1,
+	Eq = 0,
+	Ne = 1,
+	Gt = 2,
+	Ge = 3,
+	Lt = 4,
+	Le = 5,
+	Like = 6,
+	Not_Like = 7,
+	Null = 8,
+	In = 9,
+	Not_In = 10,
+	Sub_In = 11,
+	Sub_Not_In = 12,
 }
 
 Logic :: struct {
@@ -62,6 +74,22 @@ logic_add_expression :: proc(l: ^Logic, expr: ^Expression) -> ^Expression {
 	return &l.exprs[1]
 }
 
+logic_assign_process :: proc(l: ^Logic, logic_proc: ^Process) -> Result {
+	return not_implemented()
+}
+
 logic_must_be_true :: proc(lg: ^Logic_Group, l: ^Logic) -> bool {
+	not_implemented()
 	return false
+}
+
+In_Data :: union {
+	^Query,
+	[dynamic]Expression,
+}
+
+In_List :: struct {
+	data: In_Data,
+	list: bytemap.Set,
+	return_state: int,
 }

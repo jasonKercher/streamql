@@ -20,3 +20,7 @@ Reader :: struct {
 reader_assign :: proc(sql: ^Streamql, src: ^Source) -> Result {
 	return not_implemented()
 }
+
+reader_start_file_backed_input :: proc(r: ^Reader) {
+	not_implemented()
+}

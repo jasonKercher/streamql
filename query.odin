@@ -15,7 +15,7 @@ Operation :: union {
 
 Query :: struct {
 	operation: Operation,
-	plan: ^Plan,
+	plan: Plan,
 	sources: [dynamic]Source,
 	groupby: ^Group,
 	distinct_: ^Group,
@@ -60,7 +60,7 @@ query_add_source :: proc(sql: ^Streamql, q: ^Query, table_name, schema_name: str
 	idx := i32(len(q.sources))
 	append_nothing(&q.sources)
 	src := &q.sources[idx]
-	source_construct(src, table_name)
+	construct_source(src, table_name)
 
 	if table_name[0] == '@' {
 		append(&q.var_sources, idx)
@@ -88,7 +88,7 @@ query_add_source :: proc(sql: ^Streamql, q: ^Query, table_name, schema_name: str
 query_add_subquery_source :: proc(q: ^Query, subquery: ^Query) -> Result {
 	append_nothing(&q.sources)
 	src := &q.sources[len(q.sources) - 1]
-	source_construct(src, subquery)
+	construct_source(src, subquery)
 	return .Ok
 }
 

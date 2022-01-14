@@ -194,7 +194,7 @@ parse_send_asterisk :: proc(sql: ^Streamql, tok: ^Token, table_name_tok: ^Token)
 		        token_to_string(&sql.parser, table_name_tok))
 		return .Ok
 	}
-	expr := make_expression(Expr_Asterisk(""))
+	expr := make_expression(Expr_Asterisk(0))
 	expr_ptr, ret := query_distribute_expression(_get_curr_query(sql), &expr)
 	return ret
 }

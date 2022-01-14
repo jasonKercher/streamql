@@ -46,7 +46,7 @@ destroy_schema :: proc(s: ^Schema) {
 
 schema_copy :: proc(dest: ^Schema, src: ^Schema) {
 	if src == nil {
-		if .Delim_Set not_in src.props {
+		if .Delim_Set not_in dest.props {
 			schema_set_delim(dest, ",")
 		}
 		dest.io = .Delimited
@@ -212,7 +212,7 @@ _assign_expression :: proc(expr: ^Expression, sources: []Source, strict: bool = 
 	case Expr_Case:
 		return not_implemented()
 	case Expr_Function:
-		_assign_expressions(v.args[:], sources, strict) or_return
+		_assign_expressions(&v.args, sources, strict) or_return
 		function_op_resolve(&v, expr.data) or_return
 		function_validate(&v, expr) or_return
 		return _evaluate_if_const(expr)
@@ -247,7 +247,8 @@ _assign_expression :: proc(expr: ^Expression, sources: []Source, strict: bool = 
 				matches += n
 			}
 		}
-
+	case:
+		return .Ok
 	}
 
 	if matches > 1 {
@@ -263,9 +264,12 @@ _assign_expression :: proc(expr: ^Expression, sources: []Source, strict: bool = 
 }
 
 @private
-_assign_expressions :: proc(exprs: []Expression, sources: []Source, strict: bool = true) -> Result {
+_assign_expressions :: proc(exprs: ^[dynamic]Expression, sources: []Source, strict: bool = true) -> Result {
+	if exprs == nil {
+		return .Ok
+	}
 	exprs := exprs
-	for e in &exprs {
+	for e in exprs {
 		_assign_expression(&e, sources, strict) or_return
 	}
 	return .Ok
@@ -454,8 +458,34 @@ _resolve_unions :: proc(sql: ^Streamql, q: ^Query) -> Result {
 }
 
 @private
-_resolve_asterisk :: proc(exprs: []Expression, sources: []Source) -> Result {
-	return not_implemented()
+_resolve_asterisk :: proc(exprs: ^[dynamic]Expression, sources: []Source) -> Result {
+	sources := sources
+	for i := 0; i < len(exprs); i += 1 {
+		idx := i
+		if _, is_aster := exprs[i].data.(Expr_Asterisk); !is_aster {
+			continue
+		}
+
+		matches: int
+		for src, j in &sources {
+			if exprs[i].table_name == "" || exprs[i].table_name == src.alias {
+				if matches > 0 {
+					new_expr := make_expression(Expr_Asterisk(j))
+					i += 1
+					insert_at(exprs, i, new_expr)
+				} else {
+					aster := exprs[i].data.(Expr_Asterisk)
+					aster = Expr_Asterisk(j)
+				}
+				matches += 1
+			}
+		}
+		if matches == 0 {
+			fmt.fprintf(os.stderr, "failed to locate table `%s'\n", exprs[i].table_name)
+			return .Error
+		}
+	}
+	return .Ok
 }
 
 @private
@@ -469,7 +499,7 @@ _group_validate_having :: proc(q: ^Query, is_summarize: bool) -> Result {
 }
 
 @private
-_group_validation :: proc(q: ^Query, exprs, op_exprs: []Expression, is_summarize: bool) -> Result {
+_group_validation :: proc(q: ^Query, exprs, op_exprs: ^[dynamic]Expression, is_summarize: bool) -> Result {
 	return not_implemented()
 }
 
@@ -569,11 +599,11 @@ _resolve_query :: proc(sql: ^Streamql, q: ^Query, union_io: Io = nil) -> Result 
 	_assign_logic_group_expressions(q.having, q.sources[:], is_strict) or_return
 
 	/* Validate ORDER BY expressions */
-	order_exprs: []Expression
+	order_exprs: ^[dynamic]Expression
 	if q.orderby != nil {
 		order_preresolve(q.orderby, &q.operation.(Select), q.sources[:]) or_return
 		/* may have changed in preresolve */
-		order_exprs = q.orderby.expressions[:]
+		order_exprs = &q.orderby.expressions
 		_assign_expressions(order_exprs, q.sources[:], is_strict) or_return
 	}
 
@@ -602,7 +632,7 @@ _resolve_query :: proc(sql: ^Streamql, q: ^Query, union_io: Io = nil) -> Result 
 		 * but if there is no GROUP BY, just assign preresolved
 		 * ORDER BY expressions.
 		 */
-		for e in &order_exprs {
+		for e in order_exprs {
 			expr_ref, is_ref := e.data.(Expr_Reference)
 			if !is_ref {
 				continue // ???????
@@ -650,3 +680,4 @@ _resolve_query :: proc(sql: ^Streamql, q: ^Query, union_io: Io = nil) -> Result 
 
 	return .Ok
 }
+

@@ -10,6 +10,6 @@ Case_State :: enum u8 {
 Expr_Case :: struct {
 	values: [dynamic]Expression,
 	tests: [dynamic]^Logic_Group,
+	return_state_idx: i32,
 	state: Case_State,
-	return_state: Listener_State,
 }

@@ -32,23 +32,23 @@ Source :: struct {
 	props: bit_set[Source_Props],
 }
 
-source_construct_name :: proc(src: ^Source, name: string) {
+construct_source_name :: proc(src: ^Source, name: string) {
 	src^ = {
 		data = strings.clone(name),
 		schema = make_schema(),
 	}
 }
 
-source_construct_subquery :: proc(src: ^Source, subquery: ^Query) {
+construct_source_subquery :: proc(src: ^Source, subquery: ^Query) {
 	src^ = {
 		data = subquery,
 		schema = make_schema(),
 	}
 }
 
-source_construct :: proc {
-	source_construct_name,
-	source_construct_subquery,
+construct_source :: proc {
+	construct_source_name,
+	construct_source_subquery,
 }
 
 source_resolve_schema :: proc(sql: ^Streamql, src: ^Source) -> Result {
