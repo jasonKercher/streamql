@@ -44,6 +44,11 @@ destroy_schema :: proc(s: ^Schema) {
 	delete(s.rec_term)
 }
 
+schema_eq :: proc(s1: ^Schema, s2: ^Schema) -> bool {
+	not_implemented()
+	return true
+}
+
 schema_copy :: proc(dest: ^Schema, src: ^Schema) {
 	if src == nil {
 		if .Delim_Set not_in dest.props {
@@ -74,7 +79,7 @@ schema_copy :: proc(dest: ^Schema, src: ^Schema) {
 
 schema_get_item :: proc(s: ^Schema, key: string) -> (Schema_Item, Result) {
 	indices, found := bytemap.get(&s.item_map, key)
-	if found == .Not_Found {
+	if !found {
 		return Schema_Item { loc = -1 }, .Ok
 	}
 	if len(indices) > 1 {
@@ -625,7 +630,7 @@ _resolve_query :: proc(sql: ^Streamql, q: ^Query, union_io: Io = nil) -> Result 
 	}
 
 	_resolve_unions(sql, q) or_return
-	op_writer_init(q) or_return
+	op_writer_init(sql, q) or_return
 
 	if q.groupby == nil && q.orderby != nil {
 		/* This is normally handled during group processing,

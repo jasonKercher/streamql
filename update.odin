@@ -5,6 +5,7 @@ import "core:os"
 
 Update :: struct {
 	schema: Schema,
+	writer: Writer,
 	columns: [dynamic]Expression,
 	values: [dynamic]Expression,
 	top_count: i64,
@@ -23,4 +24,8 @@ update_add_expression :: proc(u: ^Update, expr: ^Expression) -> (^Expression, Re
 	}
 	append(&u.values, expr^)
 	return &u.values[len(u.values) - 1], .Ok
+}
+
+update_apply_process :: proc(q: ^Query) -> Result {
+	return not_implemented()
 }

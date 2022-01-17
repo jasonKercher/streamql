@@ -133,6 +133,12 @@ make_expression_var :: proc(var: Expr_Variable) -> Expression {
 	}
 }
 
+make_expression_ref :: proc(expr: Expr_Reference) -> Expression {
+	return Expression {
+		data = expr,
+	}
+}
+
 make_expression :: proc{
 	make_expression_const_i,
 	make_expression_const_f,
@@ -145,6 +151,7 @@ make_expression :: proc{
 	make_expression_asterisk,
 	make_expression_case,
 	make_expression_var,
+	make_expression_ref,
 }
 
 destroy_expression :: proc(expr: ^Expression) {

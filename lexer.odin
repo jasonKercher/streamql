@@ -250,7 +250,7 @@ lex_error :: proc(p: ^Parser, idx: u32, msg: string = "lex error") -> Result {
 @(private="file")
 _insert_into_map :: proc(p: ^Parser, key: string, type: Token_Type) {
 	ret := bytemap.set(&p.tok_map, key, type)
-	assert(ret == .Not_Found)
+	assert(!ret)
 }
 
 @(private="file")
@@ -461,7 +461,7 @@ _get_name :: proc(p: ^Parser, group: int, idx: ^u32) {
 	      unicode.is_alpha(rune(p.q[idx^]))); idx^ += 1 {}
 
 	type, ret := bytemap.get(&p.tok_map, p.q[begin:idx^])
-	if ret == .Not_Found {
+	if !ret {
 		type = .Query_Name
 	}
 
@@ -625,15 +625,15 @@ _get_symbol :: proc(p: ^Parser, group: int, idx: ^u32) -> Result {
 	begin := idx^
 	//idx^ += 1
 
-	type : Token_Type
-	ret : bytemap.Result = .Not_Found
+	type: Token_Type
+	ret: bool
 
 	/* Check for 2 character symbols first */
 	if begin < u32(len(p.q)) {
 		type, ret = bytemap.get(&p.tok_map, p.q[begin:begin+2])
 	}
 
-	if ret == .Found {
+	if ret {
 		#partial switch type {
 		case .Sym_Line_Comment:
 			return _get_line_comment(p, group, idx)
@@ -646,7 +646,7 @@ _get_symbol :: proc(p: ^Parser, group: int, idx: ^u32) -> Result {
 		type, ret = bytemap.get(&p.tok_map, p.q[begin:idx^])
 	}
 
-	if ret == .Not_Found {
+	if !ret {
 		return lex_error(p, idx^, "invalid symbol")
 	}
 

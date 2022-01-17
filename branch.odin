@@ -23,3 +23,7 @@ Branch :: struct {
 	false_idx: i32,
 	true_idx: i32,
 }
+
+branch_apply_process :: proc(q: ^Query) -> Result {
+	return not_implemented()
+}
