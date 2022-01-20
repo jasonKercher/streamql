@@ -16,8 +16,9 @@ Process_Props :: enum {
 }
 
 Process_Data :: union {
-	Source,
+	^Source,
 	^Logic_Group,
+	^Select,
 }
 
 Process_Call :: proc(process: ^Process) -> Result

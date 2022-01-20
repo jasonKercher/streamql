@@ -1,5 +1,7 @@
 package streamql
 
+import "core:strings"
+
 op_get_schema :: proc(gen: ^Operation) -> ^Schema {
 	gen := gen
 	switch op in gen {
@@ -14,13 +16,29 @@ op_get_schema :: proc(gen: ^Operation) -> ^Schema {
 	case Set:
 		return nil
 	}
-
-	return nil
+	unreachable()
 }
 
 op_set_schema :: proc(gen: ^Operation, src_schema: ^Schema) {
 	op_schema := op_get_schema(gen)
 	schema_copy(op_schema, src_schema)
+}
+
+op_get_writer :: proc(gen: ^Operation) -> ^Writer {
+	gen := gen
+	switch op in gen {
+	case Select:
+		return &op.writer
+	case Update:
+		return &op.writer
+	case Delete:
+		return &op.writer
+	case Branch:
+		return nil
+	case Set:
+		return nil
+	}
+	unreachable()
 }
 
 op_set_delim :: proc(gen: ^Operation, delim: string) {
@@ -75,7 +93,7 @@ op_writer_init :: proc(sql: ^Streamql, q: ^Query) -> Result {
 
 	#partial switch op in &q.operation {
 	case Select:
-		select_expand_asterisks(q, q.groupby == nil || q.distinct_ == nil)
+		op_expand_asterisks(q, q.groupby == nil || q.distinct_ == nil)
 		if q.distinct_ != nil {
 			clear(&q.distinct_.expressions)
 			for e in &op.expressions {
@@ -83,7 +101,7 @@ op_writer_init :: proc(sql: ^Streamql, q: ^Query) -> Result {
 				group_add_expression(q.distinct_, &new_expr)
 			}
 		}
-		select_verify_must_run(&op)
+		//select_verify_must_run(&op)
 	case Update:
 		return not_implemented()
 	}
@@ -94,7 +112,8 @@ op_writer_init :: proc(sql: ^Streamql, q: ^Query) -> Result {
 op_apply_process :: proc(q: ^Query, is_subquery: bool) -> Result {
 	switch op in &q.operation {
 	case Select:
-		return select_apply_process(q, is_subquery)
+		select_apply_process(q, is_subquery)
+		return .Ok
 	case Update:
 		return update_apply_process(q)
 	case Delete:
@@ -117,4 +136,60 @@ op_set_writer :: proc(gen: ^Operation, w: ^Writer) {
 	case Delete:
 		op.writer = w^
 	}
+}
+
+op_expand_asterisks :: proc(q: ^Query, force: bool) {
+	op_exprs := op_get_expressions(&q.operation)
+	op_schema := op_get_schema(&q.operation)
+
+	for i := 0; i < len(op_exprs); i += 1 {
+		aster, is_aster := op_exprs[i].data.(Expr_Asterisk)
+		if !is_aster {
+			continue
+		}
+
+		/* Ideally, we do not expand the asterisk. It is faster to
+		 * take the whole line instead of parsing and rebuilding.
+		 */
+		src_idx := int(aster)
+		_, is_subq := q.sources[src_idx].data.(^Query)
+		if !is_subq && !force && q.sub_id == 0 && schema_eq(&q.sources[src_idx].schema, op_schema) {
+			continue
+		}
+
+		_expand_asterisk(op_exprs, &q.sources[src_idx], &i)
+	}
+
+	//expression_update_indicies(&sel.expressions)
+
+	op_writer := op_get_writer(&q.operation)
+	if op_writer != nil {
+		writer_resize(op_writer, len(op_exprs))
+	}
+}
+
+@private
+_expand_asterisk :: proc(exprs: ^[dynamic]Expression, src: ^Source, idx: ^int) {
+	aster_idx := idx^
+	src_idx := i32(exprs[idx^].data.(Expr_Asterisk))
+
+	src.schema.reader.max_idx = i32(len(src.schema.layout) - 1)
+	for item, i in src.schema.layout {
+		new_expr := make_expression(item.name, "")
+		expr_col := &new_expr.data.(Expr_Column_Name)
+		expr_col.col_idx = i32(i)
+		expr_col.src_idx = src_idx
+		expr_col.name = strings.clone(item.name)
+
+		if _, is_subq := src.data.(^Query); is_subq {
+			new_expr.subq_idx = u16(src_idx)
+		}
+
+		idx^ += 1
+		insert_at(exprs, idx^, new_expr)
+	}
+
+	destroy_expression(&exprs[aster_idx])
+	ordered_remove(exprs, aster_idx)
+	idx^ -= 1
 }

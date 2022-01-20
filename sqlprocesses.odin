@@ -20,3 +20,7 @@ sql_left_join_logic :: proc(process: ^Process) -> Result {
 sql_logic :: proc(process: ^Process) -> Result {
 	return not_implemented()
 }
+
+sql_select :: proc(process: ^Process) -> Result {
+	return not_implemented()
+}

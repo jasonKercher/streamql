@@ -28,9 +28,9 @@ Schema :: struct {
 	schema_path: string,
 	delim: string,
 	rec_term: string,
-	io: Io,
-	write_io: Io,
 	props: bit_set[Schema_Props],
+	write_io: Io,
+	io: Io,
 }
 
 make_schema :: proc() -> Schema {

@@ -2,7 +2,6 @@ package util
 
 import "core:os"
 import "core:io"
-import "core:fmt"
 import "core:bufio"
 import "core:strings"
 
@@ -31,3 +30,10 @@ stdin_to_string :: proc() -> string
 	return strings.to_string(b)
 }
 
+get_directory_name :: proc(path: string) -> string {
+	last_sep := strings.last_index_byte(path, '/')
+	if last_sep == -1 {
+		return "."
+	}
+	return path[:last_sep]
+}

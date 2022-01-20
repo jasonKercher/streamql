@@ -2,10 +2,14 @@ package streamql
 
 import "core:strings"
 
+Select_Call :: proc(sel: ^Select, recs: []Record) -> Result
+
 Select :: struct {
+	select__: Select_Call,
 	schema: Schema,
 	writer: Writer,
 	expressions: [dynamic]Expression,
+	const_dest: ^Expression,
 	top_count: i64,
 }
 
@@ -29,38 +33,51 @@ select_resolve_type_from_subquery :: proc(expr: ^Expression) -> Result {
 	return not_implemented()
 }
 
-select_expand_asterisks :: proc(q: ^Query, force: bool) {
+select_apply_process :: proc(q: ^Query, is_subquery: bool) {
 	sel := &q.operation.(Select)
-	for expr, i in &sel.expressions {
-		aster, is_aster := expr.data.(Expr_Asterisk)
-		if !is_aster {
-			continue
-		}
+	process := &q.plan.op_true.data
+	process.action__ = sql_select
+	process.data = sel
 
-		/* Ideally, we do not expand the asterisk.  No need to
-		 * parse anything, if we are allowed to just take the
-		 * whole line.
-		 */
-		src_idx := int(aster)
-		_, is_subq := q.sources[src_idx].data.(^Query)
-		if !is_subq && !force && q.sub_id == 0 && schema_eq(&q.sources[src_idx].schema, &sel.schema) {
-			continue
+	if sel.const_dest != nil {
+		if q.orderby != nil {
+			sel.select__ = _select_to_const
+		} else {
+			sel.select__ = _select_order_api
 		}
-
-		_expand_asterisk(sel, &q.sources[src_idx], i)
+	} else if is_subquery {
+		sel.select__ = _select_subquery
 	}
 
-	/*** stopped here... ***/
+	/* Build plan description */
+	b := strings.make_builder()
+	strings.write_string(&b, "SELECT ")
+
+	first := true
+	for e in &sel.expressions {
+		if !first {
+			strings.write_byte(&b, ',')
+		}
+		first = false
+		expression_cat_description(&e, &b)
+	}
+
+	process = &q.plan.op_false.data
+	process.props += {.Is_Passive}
+	if sel.writer.type != nil {
+		writer_set_delim(&sel.writer, sel.schema.delim)
+		writer_set_rec_term(&sel.writer, sel.schema.rec_term)
+	}
 }
 
-select_verify_must_run :: proc(sel: ^Select) {
-	not_implemented()
-}
-
-select_apply_process :: proc(q: ^Query, is_subquery: bool) -> Result {
+_select_to_const :: proc(sel: ^Select, recs: []Record) -> Result {
 	return not_implemented()
 }
 
-_expand_asterisk :: proc(sel: ^Select, src: ^Source, idx: int) {
-	not_implemented()
+_select_order_api:: proc(sel: ^Select, recs: []Record) -> Result {
+	return not_implemented()
+}
+
+_select_subquery :: proc(sel: ^Select, recs: []Record) -> Result {
+	return not_implemented()
 }

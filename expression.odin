@@ -47,8 +47,9 @@ Expression :: struct {
 	alias: string,
 	table_name: string,
 	data: Expression_Data,
-	data_type: Data_Type,
 	props: bit_set[Expression_Props],
+	data_type: Data_Type,
+	subq_idx: u16,
 }
 
 make_expression_const_i :: proc(val: i64) -> Expression {
@@ -75,7 +76,7 @@ make_expression_subquery :: proc(subquery: ^Query) -> Expression {
 	}
 }
 
-make_expression_name :: proc(name: string, table_name: string) -> Expression {
+make_expression_name :: proc(name, table_name: string) -> Expression {
 	expr : Expression = {
 		alias = strings.clone(name),
 		table_name = table_name,
@@ -226,3 +227,8 @@ expression_get_float :: proc(expr: ^Expression, recs: []Record = nil) -> (f64, R
 expression_get_string :: proc(expr: ^Expression, recs: []Record = nil) -> (string, Result) {
 	return "", .Ok
 }
+
+//expression_update_indicies :: proc(exprs: ^[dynamic]Expression) {
+//}
+
+

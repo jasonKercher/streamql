@@ -172,13 +172,13 @@ _from :: proc(sql: ^Streamql, q: ^Query) -> Result {
 		from_proc := make_process(&q.plan, msg)
 		from_proc.props += {.Root_Fifo0}
 		from_proc.action__ = sql_read
-		from_proc.data = q.sources[0]
+		from_proc.data = &q.sources[0]
 		from_node := bigraph.add(&q.plan.proc_graph, from_proc)
 		from_node.is_root = true
 	case ^Query: /* Subquery Source */
 		from_proc := make_process(&q.plan, "subquery source1")
 		from_proc.action__ = sql_read
-		from_proc.data = q.sources[0]
+		from_proc.data = &q.sources[0]
 		from_node := bigraph.add(&q.plan.proc_graph, from_proc)
 		_build(sql, q, from_node) or_return
 		bigraph.consume(&q.plan.proc_graph, &v.plan.proc_graph)
@@ -201,7 +201,7 @@ _from :: proc(sql: ^Streamql, q: ^Query) -> Result {
 			join_proc = _make_join_proc(&q.plan, src.join_type, "hash")
 			join_proc.action__ = sql_hash_join
 			join_proc.props += {.Has_Second_Input}
-			join_proc.data = src
+			join_proc.data = &src
 
 			if .Is_Stdin in src.props {
 				reader_start_file_backed_input(&src.schema.reader)
@@ -220,7 +220,7 @@ _from :: proc(sql: ^Streamql, q: ^Query) -> Result {
 				read_proc := make_process(&q.plan, msg)
 				read_proc.props += {.Root_Fifo0, .Is_Secondary}
 				read_proc.action__ = sql_read
-				read_proc.data = src
+				read_proc.data = &src
 				read_node = bigraph.add(&q.plan.proc_graph, read_proc)
 				read_node.is_root = true
 			case ^Query: /* Subquery */
@@ -228,7 +228,7 @@ _from :: proc(sql: ^Streamql, q: ^Query) -> Result {
 				read_proc := make_process(&q.plan, "file-backed read subquery")
 				read_proc.props += {.Is_Secondary}
 				read_proc.action__ = sql_read
-				read_proc.data = src
+				read_proc.data = &src
 				read_node = bigraph.add(&q.plan.proc_graph, read_proc)
 				_build(sql, v, read_node) or_return
 				bigraph.consume(&q.plan.proc_graph, &v.plan.proc_graph)
@@ -249,7 +249,7 @@ _from :: proc(sql: ^Streamql, q: ^Query) -> Result {
 			fmt.fprintf(os.stderr, "Warning: slow cartesian join detected\n")
 			join_proc := _make_join_proc(&q.plan, src.join_type, "cartesian")
 			join_proc.props += {.Root_Fifo1}
-			join_proc.data = src
+			join_proc.data = &src
 			join_node := bigraph.add(&q.plan.proc_graph, join_proc)
 			join_node.is_root = true
 		}
