@@ -7,8 +7,6 @@ op_get_writer :: proc(gen: ^Operation) -> ^Writer {
 	switch op in gen {
 	case Select:
 		return &op.writer
-	case Branch:
-		return nil
 	}
 	unreachable()
 }
@@ -50,8 +48,6 @@ op_apply_process :: proc(q: ^Query, is_subquery: bool) -> Result {
 	case Select:
 		//select_apply_process(q, is_subquery)
 		return .Ok
-	case Branch:
-		return branch_apply_process(q)
 	}
 	return .Ok
 }
