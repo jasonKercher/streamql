@@ -17,6 +17,10 @@ Argument :: struct {
 	payload: Optarg,
 }
 
+/* I do not expect Short_As_Long to be set by a
+ * user. But rather, it is a consequence of sending
+ * long options as the "short_name"
+ */
 Getargs_Option :: enum { No_Dash, Short_As_Long }
 
 Getargs :: struct {
@@ -49,6 +53,40 @@ destroy :: proc(self: ^Getargs) {
 	delete(self.arg_map)
 }
 
+/* Main method for adding arguments
+ * By default, the short name should represent single-dash
+ * options (like -d) and the long_name should is the double-
+ * dash option (like --dynamic).
+ */
+add_arg :: proc (self: ^Getargs,
+                 short_name: string = "",
+		 long_name: string = "",
+		 option: Optarg_Option = .None) {
+
+	idx := len(self.arg_vec)
+	append(&self.arg_vec, Argument{option=option, payload=false})
+
+	if (len(short_name) > 0) {
+		if short_name in self.arg_map {
+			fmt.fprintf(os.stderr, "ambiguous option `%s'\n", short_name)
+			os.exit(1)
+		}
+
+		self.arg_map[short_name] = idx
+		if len(short_name) > 1 {
+			self.arg_opts += {.Short_As_Long}
+		}
+	}
+	if (len(long_name) > 0) {
+		if long_name in self.arg_map {
+			fmt.fprintf(os.stderr, "ambiguous option `%s'\n", long_name)
+			os.exit(1)
+		}
+		self.arg_map[long_name] = idx
+	}
+}
+
+/* Parse short (single byte) args that may be combined (e.g. program -l -s = program -ls) */
 @(private="file")
 _parse_short_args :: proc(self: ^Getargs, args: []string, dash_offset: int) {
 	i := dash_offset
@@ -92,6 +130,7 @@ _parse_short_args :: proc(self: ^Getargs, args: []string, dash_offset: int) {
 	}
 }
 
+/* Parse long args that may use = to delimit the arg from the optarg */
 @(private="file")
 _parse_long_arg :: proc(self: ^Getargs, args: []string, dash_offset: int) {
 	arg_name : string
@@ -146,6 +185,9 @@ _parse_long_arg :: proc(self: ^Getargs, args: []string, dash_offset: int) {
 	arg.payload = args[self.arg_idx]
 }
 
+/* Read all args starting at self.arg_idx (1 if unset), and
+ * stop as soon as a non-argument is found
+ */
 read_args :: proc (self: ^Getargs, args : []string) {
 
 	dash_offset: int = 1
@@ -173,3 +215,42 @@ read_args :: proc (self: ^Getargs, args : []string) {
 		}
 	}
 }
+
+/* Whether there is an optarg or not, this proc will return true
+ * if the specified argument was provided.
+ */
+get_flag :: proc (self: ^Getargs, arg_name: string) -> bool {
+	idx, ok := self.arg_map[arg_name]
+	if !ok {
+		fmt.fprintf(os.stderr, "No such argument `%s'\n", arg_name)
+		return false
+	}
+	arg := self.arg_vec[idx]
+
+	if ret, is_bool := arg.payload.(bool); !is_bool || ret {
+		return true
+	}
+
+	return false
+}
+
+/* get_payload will return the (payload, flag) where the flag
+ * represents whether the option was provided at all.  It will
+ * always return the same result as if get_flag was called.
+ */
+get_payload :: proc (self: ^Getargs, arg_name: string) -> (string, bool) {
+	idx, ok := self.arg_map[arg_name]
+	if !ok {
+		fmt.fprintf(os.stderr, "No such argument `%s'\n", arg_name)
+		return "", false
+	}
+	arg := self.arg_vec[idx]
+
+	ret, is_bool := arg.payload.(bool)
+	if (is_bool) {
+		return "", ret
+	}
+
+	return arg.payload.(string), true
+}
+
