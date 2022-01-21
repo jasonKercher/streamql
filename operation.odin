@@ -9,6 +9,8 @@ op_get_schema :: proc(gen: ^Operation) -> ^Schema {
 		return &op.schema
 	case Branch:
 		return nil
+	case Set:
+		return nil
 	}
 	unreachable()
 }
@@ -24,6 +26,8 @@ op_get_writer :: proc(gen: ^Operation) -> ^Writer {
 	case Select:
 		return &op.writer
 	case Branch:
+		return nil
+	case Set:
 		return nil
 	}
 	unreachable()
@@ -51,6 +55,8 @@ op_get_expressions :: proc(gen: ^Operation) -> ^[dynamic]Expression {
 	#partial switch op in gen {
 	case Select:
 		return &op.expressions
+	case Set:
+		not_implemented()
 	}
 	return nil
 }
@@ -82,6 +88,8 @@ op_apply_process :: proc(q: ^Query, is_subquery: bool) -> Result {
 		return .Ok
 	case Branch:
 		return branch_apply_process(q)
+	case Set:
+		return set_apply_process(q)
 	}
 	return .Ok
 }

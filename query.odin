@@ -6,7 +6,7 @@ import "core:strings"
 import "core:math/bits"
 
 Operation :: union {
-	//Set,
+	Set,
 	Branch,
 	Select,
 	//Update,
