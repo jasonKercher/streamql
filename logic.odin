@@ -54,6 +54,7 @@ Comparison :: enum {
 Logic :: struct {
 	exprs: [2]Expression,
 	comp_type: Comparison,
+	data_type: Data_Type,
 }
 
 new_logic :: proc() -> ^Logic {

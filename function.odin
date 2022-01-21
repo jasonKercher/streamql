@@ -58,7 +58,7 @@ Function_Type :: enum {
 	User_Name,
 }
 
-Function_Call :: proc(fn_expr: ^Expression) -> Result
+Function_Call :: proc(fn_expr: ^Expression, data: ^Data, recs: []Record) -> Result
 
 Expr_Function :: struct {
 	call__: Function_Call,
@@ -66,11 +66,13 @@ Expr_Function :: struct {
 	min_args: u16,
 	max_args: u16,
 	type: Function_Type,
+	data_type: Data_Type,
 }
 
 make_function :: proc(fn_type: Function_Type) -> Expr_Function {
 	return Expr_Function {
 		type = fn_type,
+		data_type = .String,
 	}
 }
 
@@ -89,7 +91,7 @@ function_add_expression :: proc(fn: ^Expr_Function, expr: ^Expression) -> ^Expre
 	return &fn.args[len(fn.args) - 1]
 }
 
-function_op_resolve :: proc(fn: ^Expr_Function) -> Result {
+function_op_resolve :: proc(fn: ^Expr_Function, data: Expression_Data) -> Result {
 	return not_implemented()
 }
 

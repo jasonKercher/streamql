@@ -13,6 +13,7 @@ Expr_Full_Record :: distinct i32
 Expr_Row_Number ::  distinct i64
 Expr_Reference :: distinct ^Expression
 Expr_Asterisk :: distinct i32
+Expr_Constant :: distinct Data
 Expr_Grouping :: distinct ^Expression
 Expr_Subquery :: distinct ^Query
 Expr_Variable :: distinct i64
@@ -30,6 +31,7 @@ Expression_Data :: union {
 	Expr_Row_Number,
 	Expr_Reference,
 	Expr_Asterisk,
+	Expr_Constant,
 	Expr_Grouping,
 	Expr_Subquery,
 	Expr_Variable,
@@ -44,7 +46,26 @@ Expression :: struct {
 	table_name: string,
 	data: Expression_Data,
 	props: bit_set[Expression_Props],
+	data_type: Data_Type,
 	subq_idx: u16,
+}
+
+make_expression_const_i :: proc(val: i64) -> Expression {
+	return Expression {
+		data = Expr_Constant(val),
+	}
+}
+
+make_expression_const_f :: proc(val: f64) -> Expression {
+	return Expression {
+		data = Expr_Constant(val),
+	}
+}
+
+make_expression_const_s :: proc(s: string) -> Expression {
+	return Expression {
+		data = Expr_Constant(strings.clone(s)),
+	}
 }
 
 make_expression_subquery :: proc(subquery: ^Query) -> Expression {
@@ -63,6 +84,12 @@ make_expression_name :: proc(name, table_name: string) -> Expression {
 		expr.data = Expr_Row_Number(0)
 	case "__REC":
 		expr.data = Expr_Full_Record(-1)
+	case "__CR":
+		expr.data = Expr_Constant(string("\r"))
+	case "__LF":
+		expr.data = Expr_Constant(string("\n"))
+	case "__CRLF":
+		expr.data = Expr_Constant(string("\r\n"))
 	case:
 		expr.data = Expr_Column_Name { name = strings.clone(name), col_idx = -1 }
 	}
@@ -100,6 +127,9 @@ make_expression_ref :: proc(expr: Expr_Reference) -> Expression {
 }
 
 make_expression :: proc{
+	make_expression_const_i,
+	make_expression_const_f,
+	make_expression_const_s,
 	make_expression_subquery,
 	make_expression_name,
 	make_expression_fn,
@@ -129,6 +159,17 @@ expression_cat_description :: proc(expr: ^Expression, b: ^strings.Builder) {
 		strings.write_string(b, expr.alias)
 	case Expr_Asterisk:
 		strings.write_byte(b, '*')
+	case Expr_Constant:
+		switch c in expr.data.(Expr_Constant) {
+		case i64:
+			strings.write_i64(b, c)
+		case f64:
+			buf: [64]u8
+			str := strconv.ftoa(buf[:], c, 'f', 3, 64)
+			strings.write_string(b, str)
+		case string:
+			strings.write_string(b, c)
+		}
 	case Expr_Subquery:
 		strings.write_string(b, "<subquery>")
 	case Expr_Variable:
@@ -155,15 +196,15 @@ expression_cat_description :: proc(expr: ^Expression, b: ^strings.Builder) {
 	}
 }
 
-expression_get_int :: proc(expr: ^Expression) -> (i64, Result) {
+expression_get_int :: proc(expr: ^Expression, recs: []Record = nil) -> (i64, Result) {
 	return 0, .Ok
 }
 
-expression_get_float :: proc(expr: ^Expression) -> (f64, Result) {
+expression_get_float :: proc(expr: ^Expression, recs: []Record = nil) -> (f64, Result) {
 	return 0, .Ok
 }
 
-expression_get_string :: proc(expr: ^Expression) -> (string, Result) {
+expression_get_string :: proc(expr: ^Expression, recs: []Record = nil) -> (string, Result) {
 	return "", .Ok
 }
 
