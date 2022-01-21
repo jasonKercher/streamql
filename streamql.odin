@@ -31,7 +31,6 @@ _Branch_State :: enum {
 
 Streamql :: struct {
 	//parser: Parser,
-	listener: Listener,
 	default_schema: string,
 	schema_paths: [dynamic]string,
 	queries: [dynamic]^Query,

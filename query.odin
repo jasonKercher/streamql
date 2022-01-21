@@ -28,7 +28,6 @@ Query :: struct {
 	var_exprs: [dynamic]i32,
 	into_table_name: string,
 	preview_text: string,
-	state: ^Listener_State,
 	top_count: i64,
 	top_expr: ^Expression,
 	next_idx_ref: ^u32,
