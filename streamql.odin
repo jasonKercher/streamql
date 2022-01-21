@@ -30,7 +30,7 @@ _Branch_State :: enum {
 }
 
 Streamql :: struct {
-	parser: Parser,
+	//parser: Parser,
 	listener: Listener,
 	default_schema: string,
 	schema_map: map[string]^Schema,
@@ -44,7 +44,7 @@ Streamql :: struct {
 
 construct :: proc(sql: ^Streamql, cfg: bit_set[Config] = {}) {
 	sql^ = {
-		parser = make_parser(),
+		//parser = make_parser(),
 		schema_paths = make([dynamic]string),
 		queries = make([dynamic]^Query),
 		config = cfg,
@@ -53,7 +53,8 @@ construct :: proc(sql: ^Streamql, cfg: bit_set[Config] = {}) {
 }
 
 destroy :: proc(sql: ^Streamql) {
-	destroy_parser(&sql.parser)
+	//destroy_parser(&sql.parser)
+	delete(sql.queries)
 }
 
 //generate_plans :: proc(sql: ^Streamql, query_str: string) -> Result {
