@@ -22,20 +22,10 @@ op_set_top_count :: proc(gen: ^Operation, top_count: i64) {
 }
 
 op_writer_init :: proc(sql: ^Streamql, q: ^Query) -> Result {
-	#partial switch op in &q.operation {
-	case Select:
-		//select_verify_must_run(&op)
-	}
-
 	return .Ok
 }
 
 op_apply_process :: proc(q: ^Query, is_subquery: bool) -> Result {
-	switch op in &q.operation {
-	case Select:
-		//select_apply_process(q, is_subquery)
-		return .Ok
-	}
 	return .Ok
 }
 

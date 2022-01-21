@@ -20,32 +20,12 @@ Process_Data :: union {
 	^Select,
 }
 
-Process_Call :: proc(process: ^Process) -> Result
 
 Process :: struct {
 	data: Process_Data,
-	action__: Process_Call,
 	msg: string,
 	props: bit_set[Process_Props],
 	plan_id: u8,
 	in_src_count: u8,
 	out_src_count: u8,
-}
-
-make_process :: proc(plan: ^Plan, msg: string) -> Process {
-	if plan == nil {
-		return Process {
-			msg = strings.clone(msg),
-		}
-	}
-	return Process {
-		msg = strings.clone(msg),
-		plan_id = plan.id,
-		in_src_count = plan.src_count,
-		out_src_count = plan.src_count,
-	}
-}
-
-process_add_to_wait_list :: proc(waiter: ^Process, waitee: ^Process) {
-	not_implemented()
 }
