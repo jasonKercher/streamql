@@ -16,6 +16,7 @@ Listener_Mode :: enum u8 {
 	Set,
 	Top,
 	Case,
+	Logic,
 	Declare,
 	Groupby,
 	Orderby,
@@ -26,6 +27,7 @@ Listener_Mode :: enum u8 {
 
 Listener_State :: struct {
 	f_stack: [dynamic]^Expression,
+	l_stack: [dynamic]^Logic_Group,
 	mode: Listener_Mode,
 }
 

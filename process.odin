@@ -17,6 +17,7 @@ Process_Props :: enum {
 
 Process_Data :: union {
 	^Source,
+	^Logic_Group,
 	^Select,
 }
 

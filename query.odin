@@ -7,7 +7,7 @@ import "core:math/bits"
 
 Operation :: union {
 	//Set,
-	//Branch,
+	Branch,
 	Select,
 	//Update,
 	//Delete,
@@ -19,6 +19,8 @@ Query :: struct {
 	sources: [dynamic]Source,
 	//groupby: ^Group,
 	//distinct_: ^Group,
+	where_: ^Logic_Group,
+	having: ^Logic_Group,
 	//orderby: ^Order,
 	unions: [dynamic]^Query,
 	subquery_exprs: [dynamic]^Query,
@@ -26,6 +28,7 @@ Query :: struct {
 	var_sources: [dynamic]i32,
 	var_expr_vars: [dynamic]i32,
 	var_exprs: [dynamic]i32,
+	joinable_logic: [dynamic]^Logic,
 	into_table_name: string,
 	preview_text: string,
 	state: ^Listener_State,
