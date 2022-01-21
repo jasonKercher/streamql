@@ -36,10 +36,8 @@ Streamql :: struct {
 	schema_map: map[string]^Schema,
 	schema_paths: [dynamic]string,
 	queries: [dynamic]^Query,
-	scopes: [dynamic]Scope,
 	out_delim: string,
 	rec_term: string,
-	curr_scope: i32,
 	config: bit_set[Config],
 	branch_state: _Branch_State,
 }
@@ -49,12 +47,9 @@ construct :: proc(sql: ^Streamql, cfg: bit_set[Config] = {}) {
 		parser = make_parser(),
 		schema_paths = make([dynamic]string),
 		queries = make([dynamic]^Query),
-		scopes = make([dynamic]Scope),
 		config = cfg,
 	}
 
-	/* scopes[0] == global scope */
-	append(&sql.scopes, make_scope())
 }
 
 destroy :: proc(sql: ^Streamql) {
