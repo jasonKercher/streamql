@@ -2,8 +2,8 @@ package streamql
 
 //import "fastrecs"
 
-Get_Record_Call :: proc(r: ^Reader, rec: ^Record) -> Result
-Get_Record_At_Call :: proc(r: ^Reader, rec: ^Record, offset: i64) -> Result
+Get_Record_Call :: proc(r: ^Reader) -> Result
+Get_Record_At_Call :: proc(r: ^Reader, offset: i64) -> Result
 Reset_Call :: proc(r: ^Reader) -> Result
 
 Reader :: struct {
@@ -11,7 +11,6 @@ Reader :: struct {
 	get_record__: Get_Record_Call,
 	get_record_at__: Get_Record_At_Call,
 	//data: fastrecs.Reader,
-	first_rec: Record,
 	skip_rows: i64,
 	max_idx: i32,
 }

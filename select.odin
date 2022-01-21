@@ -2,7 +2,7 @@ package streamql
 
 import "core:strings"
 
-Select_Call :: proc(sel: ^Select, recs: []Record) -> Result
+Select_Call :: proc(sel: ^Select) -> Result
 
 Select :: struct {
 	select__: Select_Call,
@@ -62,14 +62,14 @@ select_apply_process :: proc(q: ^Query, is_subquery: bool) {
 	process.props += {.Is_Passive}
 }
 
-_select_to_const :: proc(sel: ^Select, recs: []Record) -> Result {
+_select_to_const :: proc(sel: ^Select) -> Result {
 	return not_implemented()
 }
 
-_select_order_api:: proc(sel: ^Select, recs: []Record) -> Result {
+_select_order_api:: proc(sel: ^Select) -> Result {
 	return not_implemented()
 }
 
-_select_subquery :: proc(sel: ^Select, recs: []Record) -> Result {
+_select_subquery :: proc(sel: ^Select) -> Result {
 	return not_implemented()
 }

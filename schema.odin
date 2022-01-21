@@ -8,118 +8,118 @@ import "core:os"
 //import "bytemap"
 
 Schema_Props :: enum {
-	Is_Var,
-	Is_Default,
-	Is_Preresolved,
-	Delim_Set,
+Is_Var,
+Is_Default,
+Is_Preresolved,
+Delim_Set,
 }
 
 Schema_Item :: struct {
-	name: string,
-	loc: i32,
-	width: i32,
+name: string,
+loc: i32,
+width: i32,
 }
 
 Schema :: struct {
-	reader: Reader,
-	layout: [dynamic]Schema_Item,
-	//item_map: bytemap.Multi(i32),
-	name: string,
-	schema_path: string,
-	delim: string,
-	rec_term: string,
-	props: bit_set[Schema_Props],
+reader: Reader,
+layout: [dynamic]Schema_Item,
+//item_map: bytemap.Multi(i32),
+name: string,
+schema_path: string,
+delim: string,
+rec_term: string,
+props: bit_set[Schema_Props],
 }
 
 make_schema :: proc() -> Schema {
-	return Schema {
-		props = {.Is_Default},
-	}
+return Schema {
+	props = {.Is_Default},
+}
 }
 
 destroy_schema :: proc(s: ^Schema) {
-	delete(s.delim)
-	delete(s.rec_term)
+delete(s.delim)
+delete(s.rec_term)
 }
 
 schema_eq :: proc(s1: ^Schema, s2: ^Schema) -> bool {
-	not_implemented()
-	return true
+not_implemented()
+return true
 }
 
 schema_copy :: proc(dest: ^Schema, src: ^Schema) {
-	if src == nil {
-		if .Delim_Set not_in dest.props {
-			schema_set_delim(dest, ",")
-		}
-		dest.props += {.Is_Default}
-		return
+if src == nil {
+	if .Delim_Set not_in dest.props {
+		schema_set_delim(dest, ",")
 	}
+	dest.props += {.Is_Default}
+	return
+}
 
-	if .Delim_Set not_in src.props {
-		schema_set_delim(dest, src.delim)
-	}
+if .Delim_Set not_in src.props {
+	schema_set_delim(dest, src.delim)
+}
 
-	if .Is_Default in src.props {
-		dest.props += {.Is_Default}
-	} else {
-		dest.props -= {.Is_Default}
-	}
+if .Is_Default in src.props {
+	dest.props += {.Is_Default}
+} else {
+	dest.props -= {.Is_Default}
+}
 }
 
 schema_get_item :: proc(s: ^Schema, key: string) -> (Schema_Item, Result) {
-	//indices, found := bytemap.get(&s.item_map, key)
-	indices: []i32 = {1}
-	found := false
-	if !found {
-		return Schema_Item { loc = -1 }, .Ok
-	}
-	if len(indices) > 1 {
-		fmt.fprintf(os.stderr, "expression `%s' ambiguous\n", key)
-		return Schema_Item { loc = -1 }, .Error
-	}
-	return s.layout[indices[0]], .Ok
+//indices, found := bytemap.get(&s.item_map, key)
+indices: []i32 = {1}
+found := false
+if !found {
+	return Schema_Item { loc = -1 }, .Ok
+}
+if len(indices) > 1 {
+	fmt.fprintf(os.stderr, "expression `%s' ambiguous\n", key)
+	return Schema_Item { loc = -1 }, .Error
+}
+return s.layout[indices[0]], .Ok
 }
 
 schema_resolve :: proc(sql: ^Streamql) -> Result {
-	_resolve_schema_paths(sql) or_return
-	for q in &sql.queries {
-		if q.next_idx_ref != nil {
-			q.next_idx = q.next_idx_ref^
-			q.next_idx_ref = nil
-		}
-
-		if ._Delim_Set in sql.config {
-			op_set_delim(&q.operation, sql.out_delim)
-		}
-
-		if ._Rec_Term_Set in sql.config {
-			op_set_rec_term(&q.operation, sql.rec_term)
-		}
-
-		_resolve_query(sql, q)
+_resolve_schema_paths(sql) or_return
+for q in &sql.queries {
+	if q.next_idx_ref != nil {
+		q.next_idx = q.next_idx_ref^
+		q.next_idx_ref = nil
 	}
 
-	return .Ok
+	if ._Delim_Set in sql.config {
+		op_set_delim(&q.operation, sql.out_delim)
+	}
+
+	if ._Rec_Term_Set in sql.config {
+		op_set_rec_term(&q.operation, sql.rec_term)
+	}
+
+	_resolve_query(sql, q)
+}
+
+return .Ok
 }
 
 schema_set_delim :: proc(s: ^Schema, delim: string) {
-	if s == nil {
-		return
-	}
-	delete(s.delim)
-	s.delim = strings.clone(delim)
+if s == nil {
+	return
+}
+delete(s.delim)
+s.delim = strings.clone(delim)
 }
 
 schema_set_rec_term :: proc(s: ^Schema, rec_term: string) {
-	if s == nil {
-		return
-	}
-	delete(s.rec_term)
-	s.rec_term = strings.clone(rec_term)
+if s == nil {
+	return
+}
+delete(s.rec_term)
+s.rec_term = strings.clone(rec_term)
 }
 
-schema_assign_header :: proc(src: ^Source, rec: ^Record, src_idx: int) -> Result {
+schema_assign_header :: proc(src: ^Source, src_idx: int) -> Result {
 	return not_implemented()
 }
 
@@ -179,17 +179,10 @@ _resolve_schema_paths :: proc(sql: ^Streamql) -> Result {
 _evaluate_if_const :: proc(expr: ^Expression) -> Result {
 	fn := &expr.data.(Expr_Function)
 	for expr in fn.args {
-		if _, is_const := expr.data.(Expr_Constant); !is_const {
-			return .Ok
-		}
 	}
 
 	expr.fn_bak = new(Expr_Function)
 	expr.fn_bak^ = fn^
-
-	new_data: Data
-	fn.call__(expr, &new_data, nil) or_return
-	expr.data = Expr_Constant(new_data)
 
 	return .Ok
 }
@@ -208,7 +201,7 @@ _assign_expression :: proc(expr: ^Expression, sources: []Source, strict: bool = 
 	#partial switch v in &expr.data {
 	case Expr_Function:
 		_assign_expressions(&v.args, sources, strict) or_return
-		function_op_resolve(&v, expr.data) or_return
+		//function_op_resolve(&v, expr.data) or_return
 		function_validate(&v, expr) or_return
 		return _evaluate_if_const(expr)
 	case Expr_Subquery:
@@ -338,9 +331,9 @@ _resolve_source :: proc(sql: ^Streamql, q: ^Query, src: ^Source, src_idx: int) -
 
 	reader_assign(sql, src) or_return
 
-	rec: Record
+	//rec: Record
 	src.schema.reader.max_idx = bits.I32_MAX
-	src.schema.reader.get_record__(&src.schema.reader, &rec)
+	//src.schema.reader.get_record__(&src.schema.reader, &rec)
 	src.schema.reader.max_idx = 0
 
 	if .Is_Stdin not_in src.props {
@@ -354,22 +347,18 @@ _resolve_source :: proc(sql: ^Streamql, q: ^Query, src: ^Source, src_idx: int) -
 	 */
 	if .Is_Default in src.schema.props {
 		if .Is_Preresolved not_in src.schema.props {
-			schema_assign_header(src, &rec, src_idx)
+			//schema_assign_header(src, &rec, src_idx)
 		}
 	} else {
-		new_size := 1 if len(rec.fields) == 0 else len(rec.fields)
-		for i := len(src.schema.layout); i >= new_size; i -= 1 {
-			item := pop(&src.schema.layout)
-			delete(item.name)
-		}
+		//new_size := 1 if len(rec.fields) == 0 else len(rec.fields)
 	}
 	
 	schema_preflight(&src.schema)
 
 	if .Is_Default in src.schema.props || .Is_Stdin in src.props {
-		destroy_record(&rec)
+		//destroy_record(&rec)
 	} else {
-		src.schema.reader.first_rec = rec
+		//src.schema.reader.first_rec = rec
 	}
 
 	return .Ok
@@ -441,22 +430,6 @@ _resolve_query :: proc(sql: ^Streamql, q: ^Query) -> Result {
 	/* Top expression */
 	if q.top_expr != nil {
 		_assign_expression(q.top_expr, nil, is_strict) or_return
-		if _, is_const := q.top_expr.data.(Expr_Constant); !is_const {
-			fmt.fprintf(os.stderr, "Could not resolve TOP expression\n")
-			return .Error
-		}
-		data := Data(q.top_expr.data.(Expr_Constant))
-		val, is_int := data.(i64)
-		if !is_int {
-			fmt.fprintf(os.stderr, "Input to TOP clause must be an integer\n")
-			return .Error
-		}
-		if val < 0 {
-			fmt.fprintf(os.stderr, "Input to TOP clause cannot be negative\n")
-			return .Error
-		}
-
-		q.top_count = val
 	}
 
 	/* If there is an order by, make sure NOT to send top_count
