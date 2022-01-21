@@ -33,7 +33,6 @@ Streamql :: struct {
 	//parser: Parser,
 	listener: Listener,
 	default_schema: string,
-	schema_map: map[string]^Schema,
 	schema_paths: [dynamic]string,
 	queries: [dynamic]^Query,
 	out_delim: string,

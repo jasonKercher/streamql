@@ -24,7 +24,7 @@ Source_Data :: union {
 Source :: struct {
 	data: Source_Data,
 	alias: string,
-	//schema: Schema,
+	schema: Schema,
 	joinable_logic: []^Logic,
 	//join_data: ^Hash_Join,
 	join_logic: ^Logic_Group,
@@ -35,14 +35,14 @@ Source :: struct {
 construct_source_name :: proc(src: ^Source, name: string) {
 	src^ = {
 		data = strings.clone(name),
-		//schema = make_schema(),
+		schema = make_schema(),
 	}
 }
 
 construct_source_subquery :: proc(src: ^Source, subquery: ^Query) {
 	src^ = {
 		data = subquery,
-		//schema = make_schema(),
+		schema = make_schema(),
 	}
 }
 
@@ -52,9 +52,12 @@ construct_source :: proc {
 }
 
 source_resolve_schema :: proc(sql: ^Streamql, src: ^Source) -> Result {
+	if .Is_Preresolved in src.schema.props {
+		return .Ok
+	}
 
 	delim: string
 
-	//schema_set_delim(&src.schema, delim)
+	schema_set_delim(&src.schema, delim)
 	return .Ok
 }
