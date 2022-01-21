@@ -6,6 +6,7 @@ Select_Call :: proc(sel: ^Select) -> Result
 
 Select :: struct {
 	select__: Select_Call,
+	schema: Schema,
 	writer: Writer,
 	expressions: [dynamic]Expression,
 	const_dest: ^Expression,
