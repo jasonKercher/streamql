@@ -19,6 +19,7 @@ make_select :: proc() -> Select {
 select_apply_process :: proc(q: ^Query, is_subquery: bool) {
 	sel := &q.operation.(Select)
 	process := &q.plan.op_true.data
+	process.action__ = sql_select
 	process.data = sel
 
 	/* Build plan description */
