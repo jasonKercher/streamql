@@ -29,7 +29,6 @@ Query :: struct {
 	into_table_name: string,
 	preview_text: string,
 	top_count: i64,
-	top_expr: ^Expression,
 	next_idx_ref: ^u32,
 	next_idx: u32,
 	idx: u32,

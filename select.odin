@@ -7,29 +7,13 @@ Select_Call :: proc(sel: ^Select) -> Result
 Select :: struct {
 	select__: Select_Call,
 	writer: Writer,
-	expressions: [dynamic]Expression,
-	const_dest: ^Expression,
 	top_count: i64,
 }
 
 make_select :: proc() -> Select {
 	return Select {
-		expressions = make([dynamic]Expression),
+		top_count = 0,
 	}
-}
-
-select_add_expression :: proc(s: ^Select, expr: ^Expression) -> ^Expression {
-	append(&s.expressions, expr^)
-	return &s.expressions[len(s.expressions) - 1]
-}
-
-select_apply_alias :: proc(s: ^Select, alias: string) {
-	expr := &s.expressions[len(s.expressions) - 1]
-	expr.alias = strings.clone(alias)
-}
-
-select_resolve_type_from_subquery :: proc(expr: ^Expression) -> Result {
-	return not_implemented()
 }
 
 select_apply_process :: proc(q: ^Query, is_subquery: bool) {
@@ -38,25 +22,11 @@ select_apply_process :: proc(q: ^Query, is_subquery: bool) {
 	process.action__ = sql_select
 	process.data = sel
 
-	if sel.const_dest != nil {
-			sel.select__ = _select_order_api
-	} else if is_subquery {
-		sel.select__ = _select_subquery
-	}
-
 	/* Build plan description */
 	b := strings.make_builder()
 	strings.write_string(&b, "SELECT ")
 
 	first := true
-	for e in &sel.expressions {
-		if !first {
-			strings.write_byte(&b, ',')
-		}
-		first = false
-		expression_cat_description(&e, &b)
-	}
-
 	process = &q.plan.op_false.data
 	process.props += {.Is_Passive}
 }
