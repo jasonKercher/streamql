@@ -56,19 +56,3 @@ exec :: proc(sql: ^Streamql, query_str: string) -> Result {
 	return .Ok
 }
 
-add_schema_path :: proc(sql: ^Streamql, path: string, throw: bool = true) -> Result {
-	if !os.is_dir(path) {
-		if throw {
-			fmt.fprintf(os.stderr, "`%s' does not appear to be a directory\n", path)
-		}
-		return .Error
-	}
-
-	append(&sql.schema_paths, strings.clone(path))
-	return .Ok
-}
-
-not_implemented :: proc(loc := #caller_location) -> Result {
-	fmt.fprintln(os.stderr, "not implemented:", loc)
-	return .Error
-}

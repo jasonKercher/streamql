@@ -27,31 +27,13 @@ Writer :: struct {
 	is_detached: bool,
 }
 
-make_writer :: proc(sql: ^Streamql) -> Writer {
-	new_writer := Writer {
-		//type = write_io,
-		fd = -1,
-	}
-	return new_writer
-}
-
-destroy_writer :: proc(w: ^Writer) {
-	not_implemented()
-}
-
-/** Delimited_Writer **/
-
 Delimited_Writer :: struct {
 
 }
 
-/** Fixed_Writer **/
-
 Fixed_Writer :: struct {
 
 }
-
-/** Subquery_Writer **/
 
 Subquery_Writer :: struct {
 
