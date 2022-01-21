@@ -35,6 +35,20 @@ make_getargs :: proc (getargs_opts: bit_set[Getargs_Option] = {}) -> Getargs {
 	}
 }
 
+construct :: proc (self: ^Getargs, getargs_opts: bit_set[Getargs_Option] = {}) {
+	self^ = {
+		arg_map=make(map[string]int),
+		arg_vec=make([dynamic]Argument),
+		arg_idx=1,
+		arg_opts=getargs_opts,
+	}
+}
+
+destroy :: proc(self: ^Getargs) {
+	delete(self.arg_vec)
+	delete(self.arg_map)
+}
+
 @(private="file")
 _parse_short_args :: proc(self: ^Getargs, args: []string, dash_offset: int) {
 	i := dash_offset
