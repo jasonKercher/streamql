@@ -3,7 +3,6 @@ package streamql
 import "core:strings"
 import "core:os"
 import "getargs"
-import "util"
 
 main :: proc()
 {
@@ -41,7 +40,7 @@ main :: proc()
 		}
 		a.arg_idx += 1
 	} else {
-		query_str = util.stdin_to_string()
+		query_str = "select 1"
 	}
 
 	if exec(&sql, query_str) == .Error {
