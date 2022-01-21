@@ -1,4 +1,0 @@
-package streamql
-
-Variable :: struct {
-}
