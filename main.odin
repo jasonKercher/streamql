@@ -5,7 +5,6 @@ import "core:strings"
 import "core:os"
 import "getargs"
 import "core:fmt"
-import "bigraph"
 
 
 main :: proc()
@@ -45,13 +44,18 @@ op_set_writer :: proc(gen: ^Operation, w: ^Writer) {
 	}
 }
 
+Node :: struct($T: typeid) {
+	data: T,
+	out: [2]^Node(T),
+	visit_count: i32,
+	is_root: bool,
+}
 
 Plan :: struct {
 	execute_vector: []Process,
-	proc_graph: bigraph.Graph(Process),
-	op_true: ^bigraph.Node(Process),
-	op_false: ^bigraph.Node(Process),
-	curr: ^bigraph.Node(Process),
+	op_true: ^Node(Process),
+	op_false: ^Node(Process),
+	curr: ^Node(Process),
 	plan_str: string,
 	src_count: u8,
 	id: u8,
@@ -154,8 +158,6 @@ foreign libc {
 }
 
 Writer_Data :: union {
-	Delimited_Writer,
-	Fixed_Writer,
 	Subquery_Writer,
 }
 
@@ -167,15 +169,6 @@ Writer :: struct {
 	fd: os.Handle,
 	is_detached: bool,
 }
-
-Delimited_Writer :: struct {
-
-}
-
-Fixed_Writer :: struct {
-
-}
-
 Subquery_Writer :: struct {
 
 }
