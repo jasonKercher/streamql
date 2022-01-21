@@ -1,6 +1,6 @@
 package streamql
 
-import "bytemap"
+//import "bytemap"
 
 Logic_Group_Type :: enum {
 	And,
@@ -90,6 +90,6 @@ In_Data :: union {
 
 In_List :: struct {
 	data: In_Data,
-	list: bytemap.Set,
+	//list: bytemap.Set,
 	return_state: int,
 }

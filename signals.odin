@@ -1,8 +1,8 @@
 package streamql
 
-import "linkedlist"
+//import "linkedlist"
 
-_global_remove_list: ^linkedlist.Node(string)
+//_global_remove_list: ^linkedlist.Node(string)
 _signals_set: bool
 
 signals_init :: proc() {

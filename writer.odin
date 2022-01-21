@@ -4,7 +4,7 @@ import "util"
 import "core:c"
 import "core:os"
 import "core:fmt"
-import "linkedlist"
+//import "linkedlist"
 import "core:strings"
 
 foreign import libc "system:c"
@@ -22,26 +22,16 @@ Writer :: struct {
 	data: Writer_Data,
 	file_name: string,
 	temp_name: string,
-	temp_node: ^linkedlist.Node(string),
+	//temp_node: ^linkedlist.Node(string),
 	fd: os.Handle,
-	type: Io,
 	is_detached: bool,
 }
 
-make_writer :: proc(sql: ^Streamql, write_io: Io) -> Writer {
+make_writer :: proc(sql: ^Streamql) -> Writer {
 	new_writer := Writer {
-		type = write_io,
+		//type = write_io,
 		fd = -1,
 	}
-	switch write_io {
-	case .Delimited:
-		new_writer.data = make_delimited_writer()
-	case .Fixed:
-		new_writer.data = make_fixed_writer()
-	case .Subquery:
-		new_writer.data = make_subquery_writer()
-	}
-
 	return new_writer
 }
 
@@ -78,8 +68,8 @@ writer_close :: proc(w: ^Writer) -> Result {
 
 	/* chmod ?? */
 
-	linkedlist.remove(&_global_remove_list, w.temp_node)
-	w.temp_node = nil
+	//linkedlist.remove(&_global_remove_list, w.temp_node)
+	//w.temp_node = nil
 	return .Ok
 }
 
@@ -107,7 +97,7 @@ writer_export_temp :: proc(w: ^Writer) -> (file_name: string, res: Result) {
 		_make_temp_file(w) or_return
 	}
 	if w.is_detached {
-		linkedlist.remove(&_global_remove_list, w.temp_node)
+		//linkedlist.remove(&_global_remove_list, w.temp_node)
 		return w.temp_name, .Ok
 	} else {
 		return w.file_name, .Ok
@@ -128,7 +118,7 @@ _make_temp_file :: proc(w: ^Writer) -> Result {
 		return .Error
 	}
 
-	w.temp_node = linkedlist.push(&_global_remove_list, temp_name)
+	//w.temp_node = linkedlist.push(&_global_remove_list, temp_name)
 
 	return .Ok
 }

@@ -1,6 +1,6 @@
 package streamql
 
-import "bytemap"
+//import "bytemap"
 
 Join_Side :: enum {
 	Left,
@@ -9,7 +9,7 @@ Join_Side :: enum {
 }
 
 Hash_Join :: struct {
-	hash_data: bytemap.Multi(u64),
+	//hash_data: bytemap.Multi(u64),
 	left_expr: ^Expression,
 	right_expr: ^Expression,
 	held_records: [dynamic]Record,

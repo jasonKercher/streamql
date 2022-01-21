@@ -5,7 +5,7 @@ import "core:strings"
 import "core:fmt"
 import "core:os"
 
-import "bytemap"
+//import "bytemap"
 
 Schema_Props :: enum {
 	Is_Var,
@@ -23,14 +23,12 @@ Schema_Item :: struct {
 Schema :: struct {
 	reader: Reader,
 	layout: [dynamic]Schema_Item,
-	item_map: bytemap.Multi(i32),
+	//item_map: bytemap.Multi(i32),
 	name: string,
 	schema_path: string,
 	delim: string,
 	rec_term: string,
 	props: bit_set[Schema_Props],
-	write_io: Io,
-	io: Io,
 }
 
 make_schema :: proc() -> Schema {
@@ -54,8 +52,6 @@ schema_copy :: proc(dest: ^Schema, src: ^Schema) {
 		if .Delim_Set not_in dest.props {
 			schema_set_delim(dest, ",")
 		}
-		dest.io = .Delimited
-		dest.write_io = .Delimited
 		dest.props += {.Is_Default}
 		return
 	}
@@ -64,12 +60,6 @@ schema_copy :: proc(dest: ^Schema, src: ^Schema) {
 		schema_set_delim(dest, src.delim)
 	}
 
-	dest.write_io = src.write_io
-	if src.io == nil {
-		dest.io = src.write_io
-	} else {
-		dest.io = src.io
-	}
 	if .Is_Default in src.props {
 		dest.props += {.Is_Default}
 	} else {
@@ -78,7 +68,9 @@ schema_copy :: proc(dest: ^Schema, src: ^Schema) {
 }
 
 schema_get_item :: proc(s: ^Schema, key: string) -> (Schema_Item, Result) {
-	indices, found := bytemap.get(&s.item_map, key)
+	//indices, found := bytemap.get(&s.item_map, key)
+	indices: []i32 = {1}
+	found := false
 	if !found {
 		return Schema_Item { loc = -1 }, .Ok
 	}
@@ -137,15 +129,15 @@ schema_preflight :: proc(s: ^Schema) {
 	//}
 
 	/* May be called already from order.odin */
-	if len(s.item_map.values) > 0 {
-		return
-	}
+	//if len(s.item_map.values) > 0 {
+	//	return
+	//}
 
-	s.item_map = bytemap.make_multi(i32, u64(len(s.layout) * 2), {.No_Case})
+	//s.item_map = bytemap.make_multi(i32, u64(len(s.layout) * 2), {.No_Case})
 
 	for it, i in &s.layout {
 		it.loc = i32(i)
-		bytemap.set(&s.item_map, it.name, it.loc)
+		//bytemap.set(&s.item_map, it.name, it.loc)
 	}
 
 	if .Delim_Set not_in s.props {
@@ -214,8 +206,6 @@ _assign_expression :: proc(expr: ^Expression, sources: []Source, strict: bool = 
 	sources := sources
 
 	#partial switch v in &expr.data {
-	case Expr_Case:
-		return not_implemented()
 	case Expr_Function:
 		_assign_expressions(&v.args, sources, strict) or_return
 		function_op_resolve(&v, expr.data) or_return
@@ -317,9 +307,9 @@ _resolve_file :: proc(sql: ^Streamql, q: ^Query, src: ^Source) -> Result {
 
 @private
 _resolve_source :: proc(sql: ^Streamql, q: ^Query, src: ^Source, src_idx: int) -> Result {
-	if len(src.schema.item_map.values) != 0 {
-		return .Ok
-	}
+	//if len(src.schema.item_map.values) != 0 {
+	//	return .Ok
+	//}
 
 	if src.schema.name == "" && sql.default_schema != "" {
 		src.schema.name = strings.clone(sql.default_schema)
@@ -340,23 +330,13 @@ _resolve_source :: proc(sql: ^Streamql, q: ^Query, src: ^Source, src_idx: int) -
 		select := v.operation.(Select)
 		src.schema = select.schema
 		src.schema.props += {.Is_Preresolved}
-		src.schema.reader.type = .Subquery
 	case string:
 		_resolve_file(sql, q, src) or_return
 		if .Is_Default in src.schema.props {
-			src.schema.reader.type = .Delimited
 		}
 	}
 
 	reader_assign(sql, src) or_return
-
-	#partial switch src.schema.reader.type {
-	case .Fixed:
-		schema_preflight(&src.schema)
-		return .Ok
-	case .Subquery:
-		return .Ok
-	}
 
 	rec: Record
 	src.schema.reader.max_idx = bits.I32_MAX
@@ -509,14 +489,11 @@ _group_validation :: proc(q: ^Query, exprs, op_exprs: ^[dynamic]Expression, is_s
 }
 
 @private
-_resolve_query :: proc(sql: ^Streamql, q: ^Query, union_io: Io = nil) -> Result {
+_resolve_query :: proc(sql: ^Streamql, q: ^Query) -> Result {
 	/* First, let's resolve any subquery expressions.
 	 * These should be constant values and are not
 	 * tied to any parent queries
 	 */
-	for sub in &q.subquery_exprs {
-		_resolve_query(sql, sub, union_io)
-	}
 
 	is_strict := .Strict in sql.config
 
@@ -567,11 +544,6 @@ _resolve_query :: proc(sql: ^Streamql, q: ^Query, union_io: Io = nil) -> Result 
 		_resolve_source(sql, q, &src, i) or_return
 		source_resolve_schema(sql, &src) or_return
 
-		if union_io != nil {
-			op_get_schema(&q.operation).write_io = union_io
-		} else {
-			op_set_schema(&q.operation, &src.schema)
-		}
 
 		if src.join_logic != nil {
 			_assign_logic_group_expressions(src.join_logic, q.sources[:i+1], is_strict) or_return
@@ -583,9 +555,6 @@ _resolve_query :: proc(sql: ^Streamql, q: ^Query, union_io: Io = nil) -> Result 
 	}
 
 	op_schema := op_get_schema(&q.operation)
-	if op_schema != nil && op_schema.write_io == nil {
-		op_set_schema(&q.operation, nil)
-	}
 
 	/* Where clause */
 	_assign_logic_group_expressions(q.where_, q.sources[:], is_strict) or_return

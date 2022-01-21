@@ -64,10 +64,6 @@ select_apply_process :: proc(q: ^Query, is_subquery: bool) {
 
 	process = &q.plan.op_false.data
 	process.props += {.Is_Passive}
-	if sel.writer.type != nil {
-		writer_set_delim(&sel.writer, sel.schema.delim)
-		writer_set_rec_term(&sel.writer, sel.schema.rec_term)
-	}
 }
 
 _select_to_const :: proc(sel: ^Select, recs: []Record) -> Result {

@@ -87,8 +87,8 @@ op_writer_init :: proc(sql: ^Streamql, q: ^Query) -> Result {
 	op_schema := op_get_schema(&q.operation)
 
 	if op_schema != nil && q.union_id == 0 {
-		writer := make_writer(sql, op_schema.write_io)
-		op_set_writer(&q.operation, &writer)
+		//writer := make_writer(sql, op_schema.write_io)
+		//op_set_writer(&q.operation, &writer)
 	}
 
 	#partial switch op in &q.operation {
@@ -112,7 +112,7 @@ op_writer_init :: proc(sql: ^Streamql, q: ^Query) -> Result {
 op_apply_process :: proc(q: ^Query, is_subquery: bool) -> Result {
 	switch op in &q.operation {
 	case Select:
-		select_apply_process(q, is_subquery)
+		//select_apply_process(q, is_subquery)
 		return .Ok
 	case Update:
 		return update_apply_process(q)
