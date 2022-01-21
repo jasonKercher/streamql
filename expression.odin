@@ -36,7 +36,9 @@ Expression_Data :: union {
 	Expr_Subquery,
 	Expr_Variable,
 	Expr_Null,
+	Expr_Case,
 	Expr_Function,
+	Expr_Aggregate,
 }
 
 Expression :: struct {
@@ -96,6 +98,12 @@ make_expression_name :: proc(name, table_name: string) -> Expression {
 	return expr
 }
 
+make_expression_agg :: proc(agg: Expr_Aggregate) -> Expression {
+	return Expression {
+		data = agg,
+	}
+}
+
 make_expression_fn :: proc(fn: Expr_Function) -> Expression {
 	return Expression {
 		data = fn,
@@ -105,6 +113,12 @@ make_expression_fn :: proc(fn: Expr_Function) -> Expression {
 make_expression_null :: proc(null: Expr_Null) -> Expression {
 	return Expression {
 		data = null,
+	}
+}
+
+make_expression_case :: proc(c: Expr_Case) -> Expression {
+	return Expression {
+		data = c,
 	}
 }
 
@@ -132,9 +146,11 @@ make_expression :: proc{
 	make_expression_const_s,
 	make_expression_subquery,
 	make_expression_name,
+	make_expression_agg,
 	make_expression_fn,
 	make_expression_null,
 	make_expression_asterisk,
+	make_expression_case,
 	make_expression_var,
 	make_expression_ref,
 }
@@ -178,6 +194,8 @@ expression_cat_description :: proc(expr: ^Expression, b: ^strings.Builder) {
 		strings.write_byte(b, '>')
 	case Expr_Null:
 		strings.write_string(b, "NULL")
+	case Expr_Case:
+		strings.write_string(b, "[case expr]")
 	case Expr_Function:
 		fn := expr.data.(Expr_Function)
 		fn_names := reflect.enum_field_names(typeid_of(Function_Type))
@@ -193,6 +211,8 @@ expression_cat_description :: proc(expr: ^Expression, b: ^strings.Builder) {
 			expression_cat_description(&e, b)
 		}
 		strings.write_byte(b, ')')
+	case Expr_Aggregate:
+		strings.write_string(b, "[aggregate]")
 	}
 }
 

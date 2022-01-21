@@ -2,7 +2,7 @@ package streamql
 
 import "core:fmt"
 import "core:os"
-//import "bytemap"
+import "bytemap"
 
 Order :: struct {
 	expressions: [dynamic]Expression,
