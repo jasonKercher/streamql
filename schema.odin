@@ -524,7 +524,11 @@ _resolve_query :: proc(sql: ^Streamql, q: ^Query) -> Result {
 	 * the operation (select can be assumed). The only goal is to
 	 * make sure ALL the selected records are ordered
 	 */
+	if q.orderby != nil && len(q.unions) == 0 {
+		q.orderby.top_count = q.top_count
+	} else {
 		op_set_top_count(&q.operation, q.top_count)
+	}
 
 	/* Now, we should verify that all sources
 	 * exist and populate schemas.  As we loop, we
@@ -568,11 +572,49 @@ _resolve_query :: proc(sql: ^Streamql, q: ^Query) -> Result {
 	/* Validate HAVING expressions */
 	_assign_logic_group_expressions(q.having, q.sources[:], is_strict) or_return
 
+	/* Validate ORDER BY expressions */
+	order_exprs: ^[dynamic]Expression
+	if q.orderby != nil {
+		order_preresolve(q.orderby, &q.operation.(Select), q.sources[:]) or_return
+		/* may have changed in preresolve */
+		order_exprs = &q.orderby.expressions
+		_assign_expressions(order_exprs, q.sources[:], is_strict) or_return
+	}
+
 	/* Do GROUP BY last. There are less caveats having
 	 * waited until everything else is resolved
 	 */
+	if q.groupby != nil {
+		_map_groups(sql, q) or_return
+
+		is_summarize := .Summarize in sql.config
+
+		/* Now that we have mapped the groups, we must
+		 * re-resolve each operation, HAVING and ORDER BY
+		 * expression to a group
+		 */
+		_group_validation(q, op_exprs, nil, is_summarize) or_return
+		_group_validate_having(q, is_summarize) or_return
+		_group_validation(q, order_exprs, op_exprs, is_summarize) or_return
+	}
+
 	_resolve_unions(sql, q) or_return
 	op_writer_init(sql, q) or_return
+
+	if q.groupby == nil && q.orderby != nil {
+		/* This is normally handled during group processing,
+		 * but if there is no GROUP BY, just assign preresolved
+		 * ORDER BY expressions.
+		 */
+		for e in order_exprs {
+			expr_ref, is_ref := e.data.(Expr_Reference)
+			if !is_ref {
+				continue // ???????
+			}
+			// TODO
+			//matched := op_exprs
+		}
+	}
 
 	schema_preflight(op_schema)
 
