@@ -7,10 +7,6 @@ op_get_schema :: proc(gen: ^Operation) -> ^Schema {
 	switch op in gen {
 	case Select:
 		return &op.schema
-	case Update:
-		return &op.schema
-	case Delete:
-		return &op.schema
 	case Branch:
 		return nil
 	case Set:
@@ -28,10 +24,6 @@ op_get_writer :: proc(gen: ^Operation) -> ^Writer {
 	gen := gen
 	switch op in gen {
 	case Select:
-		return &op.writer
-	case Update:
-		return &op.writer
-	case Delete:
 		return &op.writer
 	case Branch:
 		return nil
@@ -53,10 +45,6 @@ op_set_top_count :: proc(gen: ^Operation, top_count: i64) {
 	#partial switch op in gen {
 	case Select:
 		op.top_count = top_count
-	case Update:
-		op.top_count = top_count
-	case Delete:
-		op.top_count = top_count
 	case:
 		return
 	}
@@ -67,8 +55,6 @@ op_get_expressions :: proc(gen: ^Operation) -> ^[dynamic]Expression {
 	#partial switch op in gen {
 	case Select:
 		return &op.expressions
-	case Update:
-		return &op.columns
 	case Set:
 		not_implemented()
 	}
@@ -76,10 +62,6 @@ op_get_expressions :: proc(gen: ^Operation) -> ^[dynamic]Expression {
 }
 
 op_get_additional_expressions :: proc(gen: ^Operation) -> ^[dynamic]Expression {
-	up, is_update := gen.(Update)
-	if is_update {
-		return &up.values
-	}
 	return nil
 }
 
@@ -93,17 +75,7 @@ op_writer_init :: proc(sql: ^Streamql, q: ^Query) -> Result {
 
 	#partial switch op in &q.operation {
 	case Select:
-		op_expand_asterisks(q, q.groupby == nil || q.distinct_ == nil)
-		if q.distinct_ != nil {
-			clear(&q.distinct_.expressions)
-			for e in &op.expressions {
-				new_expr := make_expression(Expr_Reference(&e))
-				group_add_expression(q.distinct_, &new_expr)
-			}
-		}
 		//select_verify_must_run(&op)
-	case Update:
-		return not_implemented()
 	}
 
 	return .Ok
@@ -114,10 +86,6 @@ op_apply_process :: proc(q: ^Query, is_subquery: bool) -> Result {
 	case Select:
 		//select_apply_process(q, is_subquery)
 		return .Ok
-	case Update:
-		return update_apply_process(q)
-	case Delete:
-		return delete_apply_process(q)
 	case Branch:
 		return branch_apply_process(q)
 	case Set:
@@ -130,10 +98,6 @@ op_set_writer :: proc(gen: ^Operation, w: ^Writer) {
 	gen := gen
 	#partial switch op in gen {
 	case Select:
-		op.writer = w^
-	case Update:
-		op.writer = w^
-	case Delete:
 		op.writer = w^
 	}
 }
