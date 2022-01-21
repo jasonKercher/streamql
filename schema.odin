@@ -376,6 +376,65 @@ _resolve_source :: proc(sql: ^Streamql, q: ^Query, src: ^Source, src_idx: int) -
 }
 
 @private
+_get_join_side :: proc(expr: ^Expression, right_idx: int) -> Join_Side {
+	#partial switch v in &expr.data {
+	case Expr_Full_Record:
+		return int(v) < right_idx ? .Left : .Right
+	case Expr_Column_Name:
+		// TODO: subquery_src_idx??
+		return int(v.src_idx) < right_idx ? .Left : .Right
+	case Expr_Function:
+		side0: Join_Side
+		for e in &v.args {
+			side1 := _get_join_side(&e, right_idx)
+			if side0 == nil {
+				side0 = side1
+			} else if side1 == nil {
+				continue
+			} else if side0 != side1 {
+				return .Mixed
+			}
+		}
+		return side0
+	}
+	return nil
+}
+
+@private
+_resolve_join_conditions :: proc(right_src: ^Source, right_idx: int) {
+	if right_src.join_logic == nil || len(right_src.joinable_logic) == 0 {
+		return
+	}
+
+	for l in right_src.joinable_logic {
+		side0 := _get_join_side(&l.exprs[0], right_idx)
+		if side0 == .Mixed {
+			continue
+		}
+		side1 := _get_join_side(&l.exprs[1], right_idx)
+		if side1 == .Mixed || side0 == side1 {
+			continue
+		}
+		if !logic_must_be_true(right_src.join_logic, l) {
+			continue
+		}
+
+		right_src.join_logic.join_logic = l
+		join := new_hash_join()
+		if side0 == .Right {
+			join.right_expr = &l.exprs[0]
+			join.left_expr = &l.exprs[1]
+		} else {
+			join.right_expr = &l.exprs[1]
+			join.left_expr = &l.exprs[0]
+		}
+		join.comp_type = data_determine_type(l.exprs[0].data_type, l.exprs[1].data_type)
+		right_src.join_data = join
+		break
+	}
+}
+
+@private
 _resolve_unions :: proc(sql: ^Streamql, q: ^Query) -> Result {
 	if len(q.unions) == 0 {
 		return .Ok
@@ -487,6 +546,7 @@ _resolve_query :: proc(sql: ^Streamql, q: ^Query) -> Result {
 		}
 
 		if i > 0 && .Force_Cartesian not_in sql.config {
+			_resolve_join_conditions(&src, i)
 		}
 	}
 

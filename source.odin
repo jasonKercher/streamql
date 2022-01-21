@@ -26,7 +26,7 @@ Source :: struct {
 	alias: string,
 	schema: Schema,
 	joinable_logic: []^Logic,
-	//join_data: ^Hash_Join,
+	join_data: ^Hash_Join,
 	join_logic: ^Logic_Group,
 	join_type: Join_Type,
 	props: bit_set[Source_Props],
