@@ -4,11 +4,12 @@ import "core:strings"
 import "core:fmt"
 import "core:os"
 
-Config :: enum {
+Config :: enum u8 {
 	Strict,
 	Overwrite,
 	Summarize,
 	Parse_Only,
+	Print_Plan,
 	Force_Cartesian,
 	_Allow_Stdin,
 	_Delim_Set,
@@ -16,13 +17,20 @@ Config :: enum {
 	_Schema_Paths_Resolved,
 }
 
-Result :: enum {
+Quotes :: enum u8 {
+	None,
+	Weak,
+	Rfc4180,
+	All,
+}
+
+Result :: enum u8 {
 	Ok,
 	Error,
 }
 
 @private
-_Branch_State :: enum {
+_Branch_State :: enum u8 {
 	No_Branch,
 	Expect_Expr,
 	Expect_Else,
@@ -38,11 +46,14 @@ Streamql :: struct {
 	queries: [dynamic]^Query,
 	variables: [dynamic]Variable,
 	scopes: [dynamic]Scope,
+	in_delim: string,
 	out_delim: string,
 	rec_term: string,
 	curr_scope: i32,
 	config: bit_set[Config],
 	branch_state: _Branch_State,
+	in_quotes: Quotes,
+	out_quotes: Quotes,
 }
 
 construct :: proc(sql: ^Streamql, cfg: bit_set[Config] = {}) {
@@ -75,33 +86,14 @@ generate_plans :: proc(sql: ^Streamql, query_str: string) -> Result {
 		reset(sql)
 		return .Error
 	}
-
-
+	if .Print_Plan in sql.config {
+		plan_print(sql)
+	}
 	return .Ok
 }
 
 exec :: proc(sql: ^Streamql, query_str: string) -> Result {
 	generate_plans(sql, query_str) or_return
-
-
-	if len(sql.queries) == 0 {
-		return .Ok
-	}
-	q := sql.queries[len(sql.queries) - 1]
-	s := &q.operation.(Select)
-
-	b := strings.make_builder()
-	first := true
-	for expr in &s.expressions {
-		if !first {
-			strings.write_byte(&b, ',')
-		}
-		first = false
-		expression_cat_description(&expr, &b)
-	}
-
-	fmt.println(strings.to_string(b))
-	
 	return .Ok
 }
 
@@ -116,7 +108,7 @@ reset :: proc(sql: ^Streamql) {
 add_schema_path :: proc(sql: ^Streamql, path: string, throw: bool = true) -> Result {
 	if !os.is_dir(path) {
 		if throw {
-			fmt.fprintf(os.stderr, "`%s' does not appear to be a directory\n", path)
+			fmt.eprintf("`%s' does not appear to be a directory\n", path)
 		}
 		return .Error
 	}

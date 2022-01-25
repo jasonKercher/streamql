@@ -1,6 +1,7 @@
 package streamql
 
 import "core:strings"
+import "fastrecs"
 
 Source_Props :: enum {
 	Must_Reopen,
@@ -56,10 +57,12 @@ source_resolve_schema :: proc(sql: ^Streamql, src: ^Source) -> Result {
 		return .Ok
 	}
 
+	r := &src.schema.data.(Reader)
+
 	delim: string
-	#partial switch src.schema.reader.type {
+	#partial switch r.type {
 	case .Delimited:
-		delim = src.schema.reader.data._delim
+		delim = r.data.(fastrecs.Reader)._delim
 		src.schema.io = .Delimited
 	case .Subquery:
 		subquery := src.data.(^Query)

@@ -4,8 +4,8 @@ import "core:math/bits"
 import "core:strings"
 import "core:fmt"
 import "core:os"
-
 import "bytemap"
+import "util"
 
 Schema_Props :: enum {
 	Is_Var,
@@ -20,8 +20,13 @@ Schema_Item :: struct {
 	width: i32,
 }
 
+Schema_Data :: union {
+	Reader,
+	Writer,
+}
+
 Schema :: struct {
-	reader: Reader,
+	data: Schema_Data,
 	layout: [dynamic]Schema_Item,
 	item_map: bytemap.Multi(i32),
 	name: string,
@@ -83,7 +88,7 @@ schema_get_item :: proc(s: ^Schema, key: string) -> (Schema_Item, Result) {
 		return Schema_Item { loc = -1 }, .Ok
 	}
 	if len(indices) > 1 {
-		fmt.fprintf(os.stderr, "expression `%s' ambiguous\n", key)
+		fmt.eprintf("expression `%s' ambiguous\n", key)
 		return Schema_Item { loc = -1 }, .Error
 	}
 	return s.layout[indices[0]], .Ok
@@ -105,7 +110,7 @@ schema_resolve :: proc(sql: ^Streamql) -> Result {
 			op_set_rec_term(&q.operation, sql.rec_term)
 		}
 
-		_resolve_query(sql, q)
+		_resolve_query(sql, q) or_return
 	}
 
 	return .Ok
@@ -257,12 +262,12 @@ _assign_expression :: proc(expr: ^Expression, sources: []Source, strict: bool = 
 	}
 
 	if matches > 1 {
-		fmt.fprintf(os.stderr, "ambiguous expression: `%s'\n", expr.alias)
+		fmt.eprintf("ambiguous expression: `%s'\n", expr.alias)
 		return .Error
 	}
 
 	if matches == 0 {
-		fmt.fprintf(os.stderr, "cannot find expression: `%s'\n", expr.alias)
+		fmt.eprintf("cannot find expression: `%s'\n", expr.alias)
 		return .Error
 	}
 	return .Ok
@@ -311,15 +316,40 @@ _load_schema_by_name :: proc(sql: ^Streamql, src: ^Source, src_idx: int) -> Resu
 
 @private
 _resolve_file :: proc(sql: ^Streamql, q: ^Query, src: ^Source) -> Result {
+	if .Is_Stdin in src.props {
+		return .Ok
+	}
+
+	table_name := src.data.(string)
+
+	file_name, fuzzy_res := util.fuzzy_file_match(table_name)
+	switch fuzzy_res {
+	case .Ambiguous:
+		fmt.eprintf("table name ambiguous: `%s'\n", table_name)
+		return .Error
+	case .Not_Found:
+		fmt.eprintf("table not found: `%s'\n", table_name)
+		return .Error
+	case .Found:
+	}
+	r := &src.schema.data.(Reader)
+	r.file_name = file_name
+
+	fmt.eprintf("YAY table's file name = `%s'\n", file_name)
+
+	/* Absolute Path */
+
 	return not_implemented()
 }
-
 
 @private
 _resolve_source :: proc(sql: ^Streamql, q: ^Query, src: ^Source, src_idx: int) -> Result {
 	if len(src.schema.item_map.values) != 0 {
 		return .Ok
 	}
+
+	src.schema.data = Reader{}
+	r := &src.schema.data.(Reader)
 
 	if src.schema.name == "" && sql.default_schema != "" {
 		src.schema.name = strings.clone(sql.default_schema)
@@ -328,7 +358,7 @@ _resolve_source :: proc(sql: ^Streamql, q: ^Query, src: ^Source, src_idx: int) -
 		/* TODO: case_insensitive */
 		if src.schema.name != "default" {
 			src.schema.props -= {.Is_Default}
-			src.schema.reader.skip_rows = 0
+			r.skip_rows = 0
 			_load_schema_by_name(sql, src, src_idx) or_return
 		}
 	}
@@ -340,17 +370,17 @@ _resolve_source :: proc(sql: ^Streamql, q: ^Query, src: ^Source, src_idx: int) -
 		select := v.operation.(Select)
 		src.schema = select.schema
 		src.schema.props += {.Is_Preresolved}
-		src.schema.reader.type = .Subquery
+		r.type = .Subquery
 	case string:
 		_resolve_file(sql, q, src) or_return
 		if .Is_Default in src.schema.props {
-			src.schema.reader.type = .Delimited
+			r.type = .Delimited
 		}
 	}
 
 	reader_assign(sql, src) or_return
 
-	#partial switch src.schema.reader.type {
+	#partial switch r.type {
 	case .Fixed:
 		schema_preflight(&src.schema)
 		return .Ok
@@ -359,12 +389,12 @@ _resolve_source :: proc(sql: ^Streamql, q: ^Query, src: ^Source, src_idx: int) -
 	}
 
 	rec: Record
-	src.schema.reader.max_idx = bits.I32_MAX
-	src.schema.reader.get_record__(&src.schema.reader, &rec)
-	src.schema.reader.max_idx = 0
+	r.max_idx = bits.I32_MAX
+	r.get_record__(r, &rec)
+	r.max_idx = 0
 
 	if .Is_Stdin not_in src.props {
-		src.schema.reader.reset__(&src.schema.reader)
+		r.reset__(r)
 	}
 
 	/* if we've made it this far, we want to try
@@ -389,7 +419,7 @@ _resolve_source :: proc(sql: ^Streamql, q: ^Query, src: ^Source, src_idx: int) -
 	if .Is_Default in src.schema.props || .Is_Stdin in src.props {
 		destroy_record(&rec)
 	} else {
-		src.schema.reader.first_rec = rec
+		r.first_rec = rec
 	}
 
 	return .Ok
@@ -466,7 +496,7 @@ _resolve_unions :: proc(sql: ^Streamql, q: ^Query) -> Result {
 _resolve_asterisk :: proc(exprs: ^[dynamic]Expression, sources: []Source) -> Result {
 	sources := sources
 	for i := 0; i < len(exprs); i += 1 {
-		idx := i
+		//idx := i
 		if _, is_aster := exprs[i].data.(Expr_Asterisk); !is_aster {
 			continue
 		}
@@ -486,7 +516,7 @@ _resolve_asterisk :: proc(exprs: ^[dynamic]Expression, sources: []Source) -> Res
 			}
 		}
 		if matches == 0 {
-			fmt.fprintf(os.stderr, "failed to locate table `%s'\n", exprs[i].table_name)
+			fmt.eprintf("failed to locate table `%s'\n", exprs[i].table_name)
 			return .Error
 		}
 	}
@@ -524,17 +554,17 @@ _resolve_query :: proc(sql: ^Streamql, q: ^Query, union_io: Io = nil) -> Result 
 	if q.top_expr != nil {
 		_assign_expression(q.top_expr, nil, is_strict) or_return
 		if _, is_const := q.top_expr.data.(Expr_Constant); !is_const {
-			fmt.fprintf(os.stderr, "Could not resolve TOP expression\n")
+			fmt.eprintf("Could not resolve TOP expression\n")
 			return .Error
 		}
 		data := Data(q.top_expr.data.(Expr_Constant))
 		val, is_int := data.(i64)
 		if !is_int {
-			fmt.fprintf(os.stderr, "Input to TOP clause must be an integer\n")
+			fmt.eprintf("Input to TOP clause must be an integer\n")
 			return .Error
 		}
 		if val < 0 {
-			fmt.fprintf(os.stderr, "Input to TOP clause cannot be negative\n")
+			fmt.eprintf("Input to TOP clause cannot be negative\n")
 			return .Error
 		}
 
@@ -667,16 +697,16 @@ _resolve_query :: proc(sql: ^Streamql, q: ^Query, union_io: Io = nil) -> Result 
 		 */
 		fd, err := os.open(q.into_table_name, os.O_WRONLY | os.O_CREATE | os.O_TRUNC, 0o664)
 		if err != os.ERROR_NONE {
-			fmt.fprintf(os.stderr, "failed to create file `%s'", q.into_table_name)
+			fmt.eprintf("failed to create file `%s'", q.into_table_name)
 			return .Error
 		}
 		err = os.close(fd)
 		if err != os.ERROR_NONE {
-			fmt.fprintf(os.stderr, "failed to close file `%s'", q.into_table_name)
+			fmt.eprintf("failed to close file `%s'", q.into_table_name)
 			return .Error
 		}
 	} else if _, is_sel := q.operation.(Select); is_sel && .Overwrite in sql.config {
-		fmt.fprintf(os.stderr, "cannot SELECT INTO: `%s' already exists\n", q.into_table_name)
+		fmt.eprintf("cannot SELECT INTO: `%s' already exists\n", q.into_table_name)
 		return .Error
 	}
 	path, err := os.absolute_path_from_relative(q.into_table_name)

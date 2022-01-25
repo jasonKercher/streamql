@@ -1,8 +1,6 @@
 package streamql
 
 import "core:fmt"
-import "core:os"
-import "bytemap"
 
 Order :: struct {
 	expressions: [dynamic]Expression,
@@ -47,7 +45,7 @@ order_preresolve :: proc(o: ^Order, sel: ^Select, sources: []Source) -> Result {
 		case Expr_Constant:
 			ordinal := expression_get_int(&e) or_return
 			if ordinal <= 0 || int(ordinal) > len(sel.schema.layout) {
-				fmt.fprintf(os.stderr, "ordinal `%d' out of range\n", ordinal)
+				fmt.eprintf("ordinal `%d' out of range\n", ordinal)
 				return .Error
 			}
 			item = sel.schema.layout[ordinal - 1]

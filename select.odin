@@ -62,6 +62,8 @@ select_apply_process :: proc(q: ^Query, is_subquery: bool) {
 		expression_cat_description(&e, &b)
 	}
 
+	process.msg = strings.to_string(b)
+
 	process = &q.plan.op_false.data
 	process.props += {.Is_Passive}
 	if sel.writer.type != nil {

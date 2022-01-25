@@ -2,7 +2,6 @@ package streamql
 
 import "bytemap"
 
-import "core:os"
 import "core:fmt"
 import "core:strings"
 import "core:unicode"
@@ -243,7 +242,7 @@ lex_lex :: proc (p: ^Parser) -> Result {
 
 lex_error :: proc(p: ^Parser, idx: u32, msg: string = "lex error") -> Result {
 	line, off := parse_get_pos(p, idx)
-	fmt.fprintf(os.stderr, "%s (line: %d, pos: %d)\n", msg, line, off)
+	fmt.eprintf("%s (line: %d, pos: %d)\n", msg, line, off)
 	return .Error
 }
 

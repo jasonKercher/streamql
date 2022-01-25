@@ -1,7 +1,6 @@
 package streamql
 
 import "core:fmt"
-import "core:os"
 
 Update :: struct {
 	schema: Schema,
@@ -16,7 +15,7 @@ update_add_expression :: proc(u: ^Update, expr: ^Expression) -> (^Expression, Re
 		_, ok_col := expr.data.(Expr_Column_Name)
 		_, ok_var := expr.data.(Expr_Variable)
 		if !ok_col && !ok_var {
-			fmt.fprintf(os.stderr, "unexpected expression as update element\n")
+			fmt.eprintln("unexpected expression as update element")
 			return nil, .Error
 		}
 		append(&u.columns, expr^)

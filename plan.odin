@@ -1,7 +1,9 @@
 package streamql
 
 import "core:strings"
+import "core:bufio"
 import "core:fmt"
+import "core:io"
 import "core:os"
 import "bigraph"
 
@@ -31,11 +33,22 @@ make_plan :: proc() -> Plan {
 		curr = bigraph.new_node(make_process(nil, "START")),
 	}
 	p.curr.data.props += {.Is_Passive}
+
+	bigraph.add_node(&p.proc_graph, p.curr)
+	bigraph.add_node(&p.proc_graph, p.op_true)
+	bigraph.add_node(&p.proc_graph, p.op_false)
 	return p
 }
 
 destroy_plan :: proc(p: ^Plan) {
 	bigraph.destroy(&p.proc_graph)
+}
+
+plan_print :: proc(sql: ^Streamql) {
+	for q, i in &sql.queries {
+		fmt.eprintf("\nQUERY %d\n", i + 1)
+		_print(&q.plan)
+	}
 }
 
 plan_build :: proc(sql: ^Streamql) -> Result {
@@ -85,6 +98,9 @@ _check_for_special_expr :: proc(p: ^Plan, process: ^Process, expr: ^Expression) 
 
 @private
 _check_for_special_exprs :: proc(p: ^Plan, process: ^Process, exprs: ^[dynamic]Expression) {
+	if exprs == nil {
+		return
+	}
 	exprs := exprs
 	for e in exprs {
 		_check_for_special_expr(p, process, &e)
@@ -165,30 +181,31 @@ _from :: proc(sql: ^Streamql, q: ^Query) -> Result {
 	}
 
 	from_node: ^bigraph.Node(Process)
+	p := &q.plan
 
 	switch v in &q.sources[0].data {
 	case string: /* File Source */
 		msg := fmt.tprintf("%s: stream read", v)
-		from_proc := make_process(&q.plan, msg)
+		from_proc := make_process(p, msg)
 		from_proc.props += {.Root_Fifo0}
 		from_proc.action__ = sql_read
 		from_proc.data = &q.sources[0]
-		from_node := bigraph.add(&q.plan.proc_graph, from_proc)
+		from_node = bigraph.add(&p.proc_graph, from_proc)
 		from_node.is_root = true
 	case ^Query: /* Subquery Source */
-		from_proc := make_process(&q.plan, "subquery source1")
+		from_proc := make_process(p, "subquery source1")
 		from_proc.action__ = sql_read
 		from_proc.data = &q.sources[0]
-		from_node := bigraph.add(&q.plan.proc_graph, from_proc)
+		from_node = bigraph.add(&p.proc_graph, from_proc)
 		_build(sql, q, from_node) or_return
-		bigraph.consume(&q.plan.proc_graph, &v.plan.proc_graph)
+		bigraph.consume(&p.proc_graph, &v.plan.proc_graph)
 		destroy_plan(&v.plan)
 	}
 	/* NOTE: This next line may be incorrect */
 	//q.sources[0].read_proc = from_proc
 
-	q.plan.curr.out[0] = from_node
-	q.plan.curr = from_node
+	p.curr.out[0] = from_node
+	p.curr = from_node
 
 	for src, i in &q.sources {
 		if i == 0 {
@@ -198,13 +215,13 @@ _from :: proc(sql: ^Streamql, q: ^Query) -> Result {
 		join_node: ^bigraph.Node(Process)
 		is_hash_join := src.join_data != nil
 		if is_hash_join {
-			join_proc = _make_join_proc(&q.plan, src.join_type, "hash")
+			join_proc = _make_join_proc(p, src.join_type, "hash")
 			join_proc.action__ = sql_hash_join
 			join_proc.props += {.Has_Second_Input}
 			join_proc.data = &src
 
 			if .Is_Stdin in src.props {
-				reader_start_file_backed_input(&src.schema.reader)
+				reader_start_file_backed_input(&src.schema.data.(Reader))
 			}
 			hash_join_init(&src)
 			
@@ -217,15 +234,15 @@ _from :: proc(sql: ^Streamql, q: ^Query) -> Result {
 				} else {
 					msg = fmt.tprintf("%s: random access", v)
 				}
-				read_proc := make_process(&q.plan, msg)
+				read_proc := make_process(p, msg)
 				read_proc.props += {.Root_Fifo0, .Is_Secondary}
 				read_proc.action__ = sql_read
 				read_proc.data = &src
-				read_node = bigraph.add(&q.plan.proc_graph, read_proc)
+				read_node = bigraph.add(&p.proc_graph, read_proc)
 				read_node.is_root = true
 			case ^Query: /* Subquery */
-				subquery_start_file_backed_input(&src.schema.reader)
-				read_proc := make_process(&q.plan, "file-backed read subquery")
+				subquery_start_file_backed_input(&src.schema.data.(Reader))
+				read_proc := make_process(p, "file-backed read subquery")
 				read_proc.props += {.Is_Secondary}
 				read_proc.action__ = sql_read
 				read_proc.data = &src
@@ -239,14 +256,14 @@ _from :: proc(sql: ^Streamql, q: ^Query) -> Result {
 			read_node.out[0] = join_node
 		} else { /* Cartesian */
 			if src.join_type != .Inner {
-				fmt.fprintf(os.stderr, "cartesian join only works with INNER JOIN\n")
+				fmt.eprintf("cartesian join only works with INNER JOIN\n")
 				return .Error
 			}
 			if _, is_subquery := src.data.(^Query); is_subquery {
-				fmt.fprintf(os.stderr, "subquery invalid on the right side of cartesian join\n")
+				fmt.eprintf("subquery invalid on the right side of cartesian join\n")
 				return .Error
 			}
-			fmt.fprintf(os.stderr, "Warning: slow cartesian join detected\n")
+			fmt.eprintf("Warning: slow cartesian join detected\n")
 			join_proc := _make_join_proc(&q.plan, src.join_type, "cartesian")
 			join_proc.props += {.Root_Fifo1}
 			join_proc.data = &src
@@ -436,4 +453,72 @@ _build :: proc(sql: ^Streamql, q: ^Query, entry: ^bigraph.Node(Process) = nil, i
 	_calculate_execution_order(&q.plan)
 
 	return .Ok
+}
+
+@private
+_print_col_sep :: proc(w: ^bufio.Writer, n: int) {
+	for n := n; n > 0; n -= 1 {
+		bufio.writer_write_byte(w, ' ')
+	}
+	bufio.writer_write_byte(w, '|')
+}
+
+@private
+_print :: proc(p: ^Plan) {
+	io_w, ok := io.to_writer(os.stream_from_handle(os.stderr))
+	if !ok {
+		fmt.eprintln("_print failure")
+		return
+	}
+	w: bufio.Writer
+	bufio.writer_init(&w, io_w)
+
+	max_len := len("BRANCH 0")
+
+	for n in p.proc_graph.nodes {
+		if len(n.data.msg) > max_len {
+			max_len = len(n.data.msg)
+		}
+	}
+
+	max_len += 1
+
+	/* Print header */
+	bufio.writer_write_string(&w, "NODE")
+	_print_col_sep(&w, max_len - len("NODE"))
+	bufio.writer_write_string(&w, "BRANCH 0")
+	_print_col_sep(&w, max_len - len("BRANCH 0"))
+	bufio.writer_write_string(&w, "BRANCH 1")
+	bufio.writer_write_byte(&w, '\n')
+
+	for i := 0; i < max_len; i += 1 {
+		bufio.writer_write_byte(&w, '=')
+	}
+	_print_col_sep(&w, 0)
+	for i := 0; i < max_len; i += 1 {
+		bufio.writer_write_byte(&w, '=')
+	}
+	_print_col_sep(&w, 0)
+	for i := 0; i < max_len; i += 1 {
+		bufio.writer_write_byte(&w, '=')
+	}
+
+	for n in p.proc_graph.nodes {
+		bufio.writer_write_byte(&w, '\n')
+		bufio.writer_write_string(&w, n.data.msg)
+		_print_col_sep(&w, max_len - len(n.data.msg))
+
+		length := 0
+		if n.out[0] != nil {
+			bufio.writer_write_string(&w, n.out[0].data.msg)
+			length = len(n.out[0].data.msg)
+		}
+		_print_col_sep(&w, max_len - length)
+		if n.out[1] != nil {
+			bufio.writer_write_string(&w, n.out[1].data.msg)
+		}
+	}
+	bufio.writer_write_byte(&w, '\n')
+	bufio.writer_flush(&w)
+	bufio.writer_destroy(&w)
 }

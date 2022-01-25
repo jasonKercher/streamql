@@ -6,6 +6,7 @@ import "core:os"
 import "core:fmt"
 import "linkedlist"
 import "core:strings"
+import "core:path/slashpath"
 
 foreign import libc "system:c"
 foreign libc {
@@ -52,7 +53,7 @@ destroy_writer :: proc(w: ^Writer) {
 writer_open :: proc(w: ^Writer, file_name: string) -> Result {
 	_set_file_name(w, file_name)
 	if _is_open(w) {
-		fmt.fprintf(os.stderr, "writer already open")
+		fmt.eprintf("writer already open")
 		return .Error
 	}
 	return _make_temp_file(w)
@@ -72,7 +73,7 @@ writer_close :: proc(w: ^Writer) -> Result {
 	}
 
 	if os.rename(w.temp_name, w.file_name) != os.ERROR_NONE {
-		fmt.fprintf(os.stderr, "rename failed\n")
+		fmt.eprintf("rename failed\n")
 		return .Error
 	}
 
@@ -84,7 +85,7 @@ writer_close :: proc(w: ^Writer) -> Result {
 }
 
 writer_resize :: proc(w: ^Writer, n: int) {
-	not_implemented()
+	//not_implemented()
 }
 
 writer_set_delim :: proc(w: ^Writer, delim: string) {
@@ -118,7 +119,7 @@ writer_export_temp :: proc(w: ^Writer) -> (file_name: string, res: Result) {
 _make_temp_file :: proc(w: ^Writer) -> Result {
 	dir_name := "."
 	if w.file_name != "" {
-		dir_name = util.get_directory_name(w.file_name)
+		dir_name = slashpath.dir(w.file_name)
 	}
 	temp_name := fmt.tprintf("%s/_write_XXXXXX", dir_name)
 	temp_name_cstr := strings.clone_to_cstring(temp_name, context.temp_allocator)

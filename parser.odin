@@ -3,7 +3,6 @@ package streamql
 import "bytemap"
 
 import "core:fmt"
-import "core:os"
 import "core:math/bits"
 import "core:container/bit_array"
 import "core:testing"
@@ -69,7 +68,7 @@ parse_error :: proc(p: ^Parser, msg: string) -> Result {
 	error_str := p.q[error_tok.begin:error_tok.begin+error_tok.len]
 	line, off := parse_get_pos(p, p.tokens[p.curr].begin)
 
-	fmt.fprintf(os.stderr, "%s at `%s': (line: %d, pos: %d)\n", msg, error_str, line, off)
+	fmt.eprintf("%s at `%s': (line: %d, pos: %d)\n", msg, error_str, line, off)
 	return .Error
 }
 
@@ -112,7 +111,8 @@ _get_prev_token_from_here :: proc(p: ^Parser, here: ^u32) -> bool {
 
 @(private="file")
 _peek_prev_token :: proc(p: ^Parser, i: u32) -> u32 {
-	i := i - 1
+	i := i  // shut -vet up
+	i -= 1
 	for ; p.tokens[i].type != .Query_Begin && p.tokens[i].type == .Query_Comment; i -= 1 {}
 	return i
 }
@@ -144,7 +144,8 @@ _get_next_token_from_curr :: proc(p: ^Parser) -> bool {
 
 @(private="file")
 _peek_next_token :: proc(p: ^Parser, i: u32) -> u32 {
-	i := i + 1
+	i := i  // shut vet up
+	i += 1
 	for ; p.tokens[i].type != .Query_End && p.tokens[i].type == .Query_Comment; i += 1 {}
 	return i
 }
@@ -247,7 +248,7 @@ _parse_function :: proc(sql: ^Streamql, idx: ^u32, allow_star: bool) -> Result {
 _skip_expression_list :: proc(p: ^Parser, allow_star: bool) -> Result {
 	loop: for {
 		_get_next_token_or_die(p) or_return
-		expr_begin := p.curr
+		//expr_begin := p.curr
 		_find_expression(p, &p.curr, allow_star) or_return
 
 		#partial switch p.tokens[p.curr].type {
@@ -1047,6 +1048,7 @@ _parse_source_item :: proc(sql: ^Streamql) -> Result {
 			}
 			//bit_array.set(&p.consumed, p.curr)
 			_parse_subquery_source(sql)
+			i = -1
 			break loop
 		case:
 			return parse_error(p, "unexpected token")
@@ -1062,7 +1064,7 @@ _parse_source_item :: proc(sql: ^Streamql) -> Result {
 	}
 
 	/* Not a subquery... */
-	if i > 0 {
+	if i >= 0 {
 		parse_send_table_source(sql, name_chain[:i + 1])
 	}
 

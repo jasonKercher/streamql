@@ -1,6 +1,5 @@
 package streamql
 
-import "core:strings"
 import "core:os"
 import "getargs"
 import "util"
@@ -20,7 +19,7 @@ main :: proc()
 		os.exit(0)
 	}
 
-	cfg: bit_set[Config]
+	cfg: bit_set[Config] = {.Print_Plan}
 	if getargs.get_flag(&a, "P") {
 		cfg += {.Parse_Only}
 	}
