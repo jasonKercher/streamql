@@ -24,3 +24,27 @@ data_determine_type :: proc(t0, t1: Data_Type) -> Data_Type {
 	}
 	return .Float
 }
+
+data_to_int :: proc(data: ^Data, type: Data_Type) -> (i64, Result) {
+	switch type {
+	case .Int:
+		return data.(i64), .Ok
+	case .Float:
+		return i64(data.(f64)), .Ok
+	case .String:
+		return 0, not_implemented()
+	}
+	unreachable()
+}
+
+data_to_float :: proc(data: ^Data, type: Data_Type) -> (f64, Result) {
+	switch type {
+	case .Int:
+		return f64(data.(i64)), .Ok
+	case .Float:
+		return data.(f64), .Ok
+	case .String:
+		return 0, not_implemented()
+	}
+	unreachable()
+}

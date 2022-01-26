@@ -174,13 +174,14 @@ _expand_asterisk :: proc(exprs: ^[dynamic]Expression, src: ^Source, idx: ^int) {
 	src_idx := i32(exprs[idx^].data.(Expr_Asterisk))
 
 	r := &src.schema.data.(Reader)
-	r.max_idx = i32(len(src.schema.layout) - 1)
+	r.max_field_idx = i32(len(src.schema.layout) - 1)
 	for item, i in src.schema.layout {
 		new_expr := make_expression(item.name, "")
 		expr_col := &new_expr.data.(Expr_Column_Name)
-		expr_col.col_idx = i32(i)
+		expr_col.item.loc = item.loc
+		expr_col.item.width = item.width
+		expr_col.item.name = strings.clone(item.name)
 		expr_col.src_idx = src_idx
-		expr_col.name = strings.clone(item.name)
 
 		if _, is_subq := src.data.(^Query); is_subq {
 			new_expr.subq_idx = u16(src_idx)

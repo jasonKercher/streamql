@@ -1,8 +1,10 @@
 package streamql
 
+import "core:path/filepath"
 import "core:math/bits"
 import "core:strings"
 import "core:fmt"
+import "fastrecs"
 import "core:os"
 import "bytemap"
 import "util"
@@ -47,6 +49,11 @@ make_schema :: proc() -> Schema {
 destroy_schema :: proc(s: ^Schema) {
 	delete(s.delim)
 	delete(s.rec_term)
+	for item in s.layout {
+		delete(item.name)
+	}
+	delete(s.layout)
+	bytemap.destroy(&s.item_map)
 }
 
 schema_eq :: proc(s1: ^Schema, s2: ^Schema) -> bool {
@@ -132,8 +139,17 @@ schema_set_rec_term :: proc(s: ^Schema, rec_term: string) {
 	s.rec_term = strings.clone(rec_term)
 }
 
-schema_assign_header :: proc(src: ^Source, rec: ^Record, src_idx: int) -> Result {
-	return not_implemented()
+schema_assign_header :: proc(src: ^Source, rec: ^Record, src_idx: int) {
+	schema := &src.schema
+	fr_rec := rec.data.(fastrecs.Record)
+	for f, i in fr_rec.fields {
+		new_item := Schema_Item {
+			name = strings.clone(f),
+			loc = i32(len(src.schema.layout)),
+		}
+		append(&src.schema.layout, new_item)
+	}
+	schema_preflight(schema)
 }
 
 schema_preflight :: proc(s: ^Schema) {
@@ -201,16 +217,23 @@ _evaluate_if_const :: proc(expr: ^Expression) -> Result {
 	expr.fn_bak^ = fn^
 
 	new_data: Data
-	fn.call__(expr, &new_data, nil) or_return
+	fn.call__(fn, &new_data, nil) or_return
 	expr.data = Expr_Constant(new_data)
 
 	return .Ok
 }
 
 @private
-_try_assign_source :: proc(col: ^Expr_Column_Name, src: ^Source) -> int {
-	not_implemented()
-	return 0
+_try_assign_source :: proc(col: ^Expr_Column_Name, src: ^Source, src_idx: int) -> int {
+	src := src
+	indices, ok := bytemap.get(&src.schema.item_map, col.item.name)
+	if !ok {
+		return 0
+	}
+
+	first_match := src.schema.layout[indices[0]]
+	expression_link(col, first_match, src_idx, src)
+	return len(indices)
 }
 
 @private
@@ -223,7 +246,7 @@ _assign_expression :: proc(expr: ^Expression, sources: []Source, strict: bool = 
 		return not_implemented()
 	case Expr_Function:
 		_assign_expressions(&v.args, sources, strict) or_return
-		function_op_resolve(&v, expr.data) or_return
+		function_op_resolve(expr, expr.data) or_return
 		function_validate(&v, expr) or_return
 		return _evaluate_if_const(expr)
 	case Expr_Subquery:
@@ -240,17 +263,17 @@ _assign_expression :: proc(expr: ^Expression, sources: []Source, strict: bool = 
 			}
 		}
 	case Expr_Column_Name:
-		if v.col_idx != -1 {
+		if v.item.loc != -1 {
 			return .Ok
 		}
 
 		for src, i in &sources {
 			n : int
 			if expr.table_name == "" || expr.table_name == src.alias {
-				n = _try_assign_source(&v, &src)
-				if n > 0 {
-					v.src_idx = i32(i)
-				}
+				n = _try_assign_source(&v, &src, i)
+				//if n > 0 {
+				//	v.src_idx = i32(i)
+				//}
 				if n > 1 && !strict {
 					n = 1
 				}
@@ -321,25 +344,52 @@ _resolve_file :: proc(sql: ^Streamql, q: ^Query, src: ^Source) -> Result {
 	}
 
 	table_name := src.data.(string)
-
-	file_name, fuzzy_res := util.fuzzy_file_match(table_name)
-	switch fuzzy_res {
-	case .Ambiguous:
-		fmt.eprintf("table name ambiguous: `%s'\n", table_name)
-		return .Error
-	case .Not_Found:
-		fmt.eprintf("table not found: `%s'\n", table_name)
-		return .Error
-	case .Found:
-	}
 	r := &src.schema.data.(Reader)
-	r.file_name = file_name
 
-	fmt.eprintf("YAY table's file name = `%s'\n", file_name)
+	/* Must match the file name exactly in strict mode */
+	if .Strict in sql.config {
+		if !os.is_file(table_name) {
+			fmt.eprintf("table not found: `%s'\n", table_name)
+			return .Error
+		}
+		r.file_name = table_name
+	} else {
+		file_name, fuzzy_res := util.fuzzy_file_match(table_name)
+		switch fuzzy_res {
+		case .Ambiguous:
+			fmt.eprintf("table name ambiguous: `%s'\n", table_name)
+			return .Error
+		case .Not_Found:
+			fmt.eprintf("table not found: `%s'\n", table_name)
+			return .Error
+		case .Found:
+		}
+		r.file_name = file_name
+	}
 
-	/* Absolute Path */
+	full_path, ok := filepath.abs(r.file_name, context.temp_allocator)
+	if !ok {
+		fmt.eprintf("failed to find absolute path for `%s'\n", r.file_name)
+		return .Error
+	}
+	match_schema, found := sql.schema_map[full_path]
+	if !found {
+		return .Ok
+	}
 
-	return not_implemented()
+	/* At this point we can assume we are reading from a file that
+	 * will have been modified by the time we try to read from it.
+	 * So we must use the schema it *will* have.
+	 */
+	assert(len(src.schema.layout) == 0)
+	append(&src.schema.layout, ..match_schema.layout[:])
+
+	src.props += {.Must_Reopen}
+	src.schema.props += {.Is_Preresolved}
+	schema_copy(&src.schema, match_schema)
+	r.type = match_schema.write_io
+
+	return .Ok
 }
 
 @private
@@ -348,7 +398,7 @@ _resolve_source :: proc(sql: ^Streamql, q: ^Query, src: ^Source, src_idx: int) -
 		return .Ok
 	}
 
-	src.schema.data = Reader{}
+	src.schema.data = make_reader()
 	r := &src.schema.data.(Reader)
 
 	if src.schema.name == "" && sql.default_schema != "" {
@@ -389,9 +439,10 @@ _resolve_source :: proc(sql: ^Streamql, q: ^Query, src: ^Source, src_idx: int) -
 	}
 
 	rec: Record
-	r.max_idx = bits.I32_MAX
+	rec.data = fastrecs.Record{}
+	r.max_field_idx = bits.I32_MAX
 	r.get_record__(r, &rec)
-	r.max_idx = 0
+	r.max_field_idx = 0
 
 	if .Is_Stdin not_in src.props {
 		r.reset__(r)

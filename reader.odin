@@ -1,5 +1,6 @@
 package streamql
 
+import "core:os"
 import "fastrecs"
 
 /* maybe come up with a better solution?? */
@@ -7,6 +8,10 @@ Delete_Call :: proc(r: ^Reader)
 Reset_Call :: proc(r: ^Reader) -> Result
 Get_Record_Call :: proc(r: ^Reader, rec: ^Record) -> Result
 Get_Record_At_Call :: proc(r: ^Reader, rec: ^Record, offset: i64) -> Result
+
+Reader_Status :: enum u8 {
+	Eof,
+}
 
 Reader_Data :: union {
 	fastrecs.Reader,
@@ -19,10 +24,19 @@ Reader :: struct {
 	get_record_at__: Get_Record_At_Call,
 	file_name: string,
 	data: Reader_Data,
-	first_rec: Record,
-	skip_rows: i64,
-	max_idx: i32,
+	first_rec: Record, // Put this somewhere else...
+	record_idx: i64,
+	random_access_file: os.Handle,
+	max_field_idx: i32,
+	skip_rows: i32,
 	type: Io,
+	status: bit_set[Reader_Status],
+}
+
+make_reader :: proc() -> Reader {
+	return Reader {
+		random_access_file = -1,
+	}
 }
 
 reader_assign :: proc(sql: ^Streamql, src: ^Source) -> Result {

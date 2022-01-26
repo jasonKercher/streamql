@@ -6,7 +6,7 @@ import "core:os"
 import "core:fmt"
 import "linkedlist"
 import "core:strings"
-import "core:path/slashpath"
+import "core:path/filepath"
 
 foreign import libc "system:c"
 foreign libc {
@@ -119,7 +119,7 @@ writer_export_temp :: proc(w: ^Writer) -> (file_name: string, res: Result) {
 _make_temp_file :: proc(w: ^Writer) -> Result {
 	dir_name := "."
 	if w.file_name != "" {
-		dir_name = slashpath.dir(w.file_name)
+		dir_name = filepath.dir(w.file_name)
 	}
 	temp_name := fmt.tprintf("%s/_write_XXXXXX", dir_name)
 	temp_name_cstr := strings.clone_to_cstring(temp_name, context.temp_allocator)

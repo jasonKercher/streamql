@@ -27,6 +27,8 @@ Quotes :: enum u8 {
 Result :: enum u8 {
 	Ok,
 	Error,
+	Eof,
+	Null, // refering to NULL in SQL
 }
 
 @private

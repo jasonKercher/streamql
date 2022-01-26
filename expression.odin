@@ -20,9 +20,8 @@ Expr_Variable :: distinct i64
 Expr_Null :: distinct string
 
 Expr_Column_Name :: struct {
-	name: string,
+	item: Schema_Item,
 	src_idx: i32,
-	col_idx: i32,
 }
 
 Expression_Data :: union {
@@ -55,18 +54,21 @@ Expression :: struct {
 make_expression_const_i :: proc(val: i64) -> Expression {
 	return Expression {
 		data = Expr_Constant(val),
+		data_type = .Int,
 	}
 }
 
 make_expression_const_f :: proc(val: f64) -> Expression {
 	return Expression {
 		data = Expr_Constant(val),
+		data_type = .Float,
 	}
 }
 
 make_expression_const_s :: proc(s: string) -> Expression {
 	return Expression {
 		data = Expr_Constant(strings.clone(s)),
+		data_type = .String,
 	}
 }
 
@@ -93,7 +95,10 @@ make_expression_name :: proc(name, table_name: string) -> Expression {
 	case "__CRLF":
 		expr.data = Expr_Constant(string("\r\n"))
 	case:
-		expr.data = Expr_Column_Name { name = strings.clone(name), col_idx = -1 }
+		expr.data = Expr_Column_Name {
+			item = Schema_Item {name = strings.clone(name), loc = -1 },
+			src_idx = -1,
+		}
 	}
 	return expr
 }
@@ -216,16 +221,37 @@ expression_cat_description :: proc(expr: ^Expression, b: ^strings.Builder) {
 	}
 }
 
+expression_link :: proc(col: ^Expr_Column_Name, item: Schema_Item, src_idx: int, src: ^Source) {
+	col.item.loc = item.loc
+	col.item.width = item.width
+	col.src_idx = i32(src_idx)
+
+	/* TODO: Aggregate linked expression */
+
+	r := &src.schema.data.(Reader)
+	if src != nil && item.loc > r.max_field_idx {
+		r.max_field_idx = item.loc
+	}
+}
+
 expression_get_int :: proc(expr: ^Expression, recs: []Record = nil) -> (i64, Result) {
-	return 0, .Ok
+	#partial switch v in &expr.data {
+	case Expr_Constant:
+		return data_to_int((^Data)(&v), expr.data_type)
+	}
+	return 0, not_implemented()
 }
 
 expression_get_float :: proc(expr: ^Expression, recs: []Record = nil) -> (f64, Result) {
-	return 0, .Ok
+	#partial switch v in &expr.data {
+	case Expr_Constant:
+		return data_to_float((^Data)(&v), expr.data_type)
+	}
+	return 0, not_implemented()
 }
 
 expression_get_string :: proc(expr: ^Expression, recs: []Record = nil) -> (string, Result) {
-	return "", .Ok
+	return "", not_implemented()
 }
 
 //expression_update_indicies :: proc(exprs: ^[dynamic]Expression) {
