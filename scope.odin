@@ -1,3 +1,4 @@
+//+private
 package streamql
 
 Scope_Status :: enum {

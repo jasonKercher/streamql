@@ -10,7 +10,7 @@ Fuzzy_Result :: enum {
 	Not_Found,
 }
 
-@private
+@(private = "file")
 _delete_file_list :: proc(files: []string) {
 	files := files
 	for f in &files {

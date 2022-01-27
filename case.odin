@@ -1,3 +1,4 @@
+//+private
 package streamql
 
 Case_State :: enum u8 {

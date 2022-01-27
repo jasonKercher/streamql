@@ -1,3 +1,4 @@
+//+private
 package streamql
 
 Io :: enum u8 {

@@ -1,3 +1,4 @@
+//+private
 package streamql
 
 import "bytemap"
@@ -573,10 +574,10 @@ _get_variable :: proc(p: ^Parser, group: int, idx: ^u32) {
 
 @(private="file")
 _get_block_comment :: proc(p: ^Parser, group: int, idx: ^u32) -> Result {
-	
+
 	begin := idx^
 
-	for ; idx^+1 < u32(len(p.q)) && 
+	for ; idx^+1 < u32(len(p.q)) &&
 	    !(p.q[idx^] == '*' && p.q[idx^+1] == '/'); idx^ += 1 {
 		if p.q[idx^] == '\n' {
 			append(&p.lf_vec, idx^)
@@ -754,7 +755,7 @@ lex_error_check :: proc(t: ^testing.T) {
 
 	p.q = "select /* a comment * / 1,2 from foo"
 	testing.expect_value(t, lex_lex(&p), Result.Error)
-	
+
 	/* Will throw p error as multiply, divide */
 	//p.q = "select / * a comment */ 1,2 from foo"
 	//testing.expect_value(t, lex_lex(&p), Result.Error)
@@ -783,10 +784,10 @@ lex_check :: proc(t: ^testing.T) {
 
 	/* For the following tests...
 	 * len(p.tokens) = token_count + 2
-	 * This is because every query begins and ends 
+	 * This is because every query begins and ends
 	 * with .Query_Begin and .Query_End
 	 */
-	
+
 	//         01      2   3    4   5    6   7  890 1
 	p.q = "select col from foo join foo on 1=1"
 	testing.expect_value(t, lex_lex(&p), Result.Ok)
@@ -813,7 +814,7 @@ lex_check :: proc(t: ^testing.T) {
 	select (
 		select (1 + 2 * 5 + (33-(1))) [bar baz]
 		from foo f
-	) f 
+	) f
 	from (select 1) x
 	`
 	testing.expect_value(t, lex_lex(&p), Result.Ok)

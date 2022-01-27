@@ -1,3 +1,4 @@
+//+private
 package streamql
 
 import "bytemap"
@@ -191,7 +192,7 @@ _send_column_or_const :: proc(sql: ^Streamql, begin: u32) -> Result {
 				return parse_send_name(sql, field_name_tok, tok)
 			case .Sym_Asterisk:
 				return parse_send_asterisk(sql, field_name_tok, tok)
-			case:	
+			case:
 				return parse_error(p, "unexpected token")
 			}
 		}
@@ -347,13 +348,13 @@ _parse_expression :: proc(sql: ^Streamql, begin, end: u32, group: u16) -> Result
 	begin := begin
 	end := end
 
-	for p.tokens[begin].type == .Sym_Lparen && 
+	for p.tokens[begin].type == .Sym_Lparen &&
 	     p.tokens[_peek_prev_token(p, end)].type == .Sym_Rparen {
 		_get_next_token(p, &begin)
 		_get_prev_token_from_here(p, &end)
 	}
 
-	if p.tokens[begin].type == .Sym_Lparen && 
+	if p.tokens[begin].type == .Sym_Lparen &&
 	    p.tokens[_peek_next_token(p, begin)].type == .Select {
 		parse_enter_subquery_const(sql)
 
@@ -540,7 +541,7 @@ _find_expression :: proc(p: ^Parser, idx: ^u32, allow_star: bool) -> (level: int
 	state := _Expr_State.Expect_Val
 	in_expr := true
 	begin := idx^
-	
+
 	fn_token : ^Token
 
 	for p.tokens[idx^].type != .Query_End {
@@ -787,7 +788,7 @@ _parse_boolean_expression :: proc(sql: ^Streamql, begin, end: u32, group: u16) -
 	begin := begin
 	end := end
 
-	for p.tokens[begin].type == .Sym_Lparen && 
+	for p.tokens[begin].type == .Sym_Lparen &&
 	    p.tokens[_peek_prev_token(p, end)].type == .Sym_Rparen {
 		_get_next_token(p, &begin)
 		_get_prev_token_from_here(p, &end)
@@ -1281,11 +1282,11 @@ _parse_select_stmt :: proc(sql: ^Streamql) -> Result {
 				return parse_error(p, "unexpected token")
 			}
 			bit_array.set(&p.consumed, p.curr)
-			
+
 			_get_next_token_or_die(p) or_return
 			parse_enter_top_expr(sql)
 			expr_begin := p.curr
-			
+
 			extra_level := _find_expression(p, &p.curr, false) or_return
 			if extra_level > 0 {
 				return parse_error(p, "unmatched '('")
@@ -1453,7 +1454,7 @@ _parse_enter :: proc(sql: ^Streamql) -> Result {
 		p.q_count -= 1
 		ret = parse_error(p, "unexpected token")
 	}
-	
+
 	parse_leave_sql(sql)
 
 	return ret

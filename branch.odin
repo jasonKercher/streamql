@@ -1,3 +1,4 @@
+//+private
 package streamql
 
 Branch_Type :: enum {

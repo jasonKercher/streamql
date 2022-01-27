@@ -1,3 +1,4 @@
+//+private
 package streamql
 
 import "core:path/filepath"
@@ -178,7 +179,7 @@ schema_preflight :: proc(s: ^Schema) {
 	}
 }
 
-@private
+@(private = "file")
 _resolve_schema_paths :: proc(sql: ^Streamql) -> Result {
 	/* Should only ever do this once */
 	if ._Schema_Paths_Resolved in sql.config {
@@ -204,7 +205,7 @@ _resolve_schema_paths :: proc(sql: ^Streamql) -> Result {
 	return .Ok
 }
 
-@private
+@(private = "file")
 _evaluate_if_const :: proc(expr: ^Expression) -> Result {
 	fn := &expr.data.(Expr_Function)
 	for expr in fn.args {
@@ -223,7 +224,7 @@ _evaluate_if_const :: proc(expr: ^Expression) -> Result {
 	return .Ok
 }
 
-@private
+@(private = "file")
 _try_assign_source :: proc(col: ^Expr_Column_Name, src: ^Source, src_idx: int) -> int {
 	src := src
 	indices, ok := bytemap.get(&src.schema.item_map, col.item.name)
@@ -236,7 +237,7 @@ _try_assign_source :: proc(col: ^Expr_Column_Name, src: ^Source, src_idx: int) -
 	return len(indices)
 }
 
-@private
+@(private = "file")
 _assign_expression :: proc(expr: ^Expression, sources: []Source, strict: bool = true) -> Result {
 	matches := 0
 	sources := sources
@@ -296,7 +297,7 @@ _assign_expression :: proc(expr: ^Expression, sources: []Source, strict: bool = 
 	return .Ok
 }
 
-@private
+@(private = "file")
 _assign_expressions :: proc(exprs: ^[dynamic]Expression, sources: []Source, strict: bool = true) -> Result {
 	if exprs == nil {
 		return .Ok
@@ -308,7 +309,7 @@ _assign_expressions :: proc(exprs: ^[dynamic]Expression, sources: []Source, stri
 	return .Ok
 }
 
-@private
+@(private = "file")
 _assign_logic_group_expressions :: proc(lg: ^Logic_Group, sources: []Source, strict: bool = true) -> Result {
 	if lg == nil {
 		return .Ok
@@ -332,12 +333,12 @@ _assign_logic_group_expressions :: proc(lg: ^Logic_Group, sources: []Source, str
 	return .Ok
 }
 
-@private
+@(private = "file")
 _load_schema_by_name :: proc(sql: ^Streamql, src: ^Source, src_idx: int) -> Result {
 	return not_implemented()
 }
 
-@private
+@(private = "file")
 _resolve_file :: proc(sql: ^Streamql, q: ^Query, src: ^Source) -> Result {
 	if .Is_Stdin in src.props {
 		return .Ok
@@ -392,7 +393,7 @@ _resolve_file :: proc(sql: ^Streamql, q: ^Query, src: ^Source) -> Result {
 	return .Ok
 }
 
-@private
+@(private = "file")
 _resolve_source :: proc(sql: ^Streamql, q: ^Query, src: ^Source, src_idx: int) -> Result {
 	if len(src.schema.item_map.values) != 0 {
 		return .Ok
@@ -464,7 +465,7 @@ _resolve_source :: proc(sql: ^Streamql, q: ^Query, src: ^Source, src_idx: int) -
 			delete(item.name)
 		}
 	}
-	
+
 	schema_preflight(&src.schema)
 
 	if .Is_Default in src.schema.props || .Is_Stdin in src.props {
@@ -476,7 +477,7 @@ _resolve_source :: proc(sql: ^Streamql, q: ^Query, src: ^Source, src_idx: int) -
 	return .Ok
 }
 
-@private
+@(private = "file")
 _get_join_side :: proc(expr: ^Expression, right_idx: int) -> Join_Side {
 	#partial switch v in &expr.data {
 	case Expr_Full_Record:
@@ -501,7 +502,7 @@ _get_join_side :: proc(expr: ^Expression, right_idx: int) -> Join_Side {
 	return nil
 }
 
-@private
+@(private = "file")
 _resolve_join_conditions :: proc(right_src: ^Source, right_idx: int) {
 	if right_src.join_logic == nil || len(right_src.joinable_logic) == 0 {
 		return
@@ -535,7 +536,7 @@ _resolve_join_conditions :: proc(right_src: ^Source, right_idx: int) {
 	}
 }
 
-@private
+@(private = "file")
 _resolve_unions :: proc(sql: ^Streamql, q: ^Query) -> Result {
 	if len(q.unions) == 0 {
 		return .Ok
@@ -543,7 +544,7 @@ _resolve_unions :: proc(sql: ^Streamql, q: ^Query) -> Result {
 	return not_implemented()
 }
 
-@private
+@(private = "file")
 _resolve_asterisk :: proc(exprs: ^[dynamic]Expression, sources: []Source) -> Result {
 	sources := sources
 	for i := 0; i < len(exprs); i += 1 {
@@ -574,22 +575,22 @@ _resolve_asterisk :: proc(exprs: ^[dynamic]Expression, sources: []Source) -> Res
 	return .Ok
 }
 
-@private
+@(private = "file")
 _map_groups :: proc(sql: ^Streamql, q: ^Query) -> Result {
 	return not_implemented()
 }
 
-@private
+@(private = "file")
 _group_validate_having :: proc(q: ^Query, is_summarize: bool) -> Result {
 	return not_implemented()
 }
 
-@private
+@(private = "file")
 _group_validation :: proc(q: ^Query, exprs, op_exprs: ^[dynamic]Expression, is_summarize: bool) -> Result {
 	return not_implemented()
 }
 
-@private
+@(private = "file")
 _resolve_query :: proc(sql: ^Streamql, q: ^Query, union_io: Io = nil) -> Result {
 	/* First, let's resolve any subquery expressions.
 	 * These should be constant values and are not

@@ -1,3 +1,4 @@
+//+private
 package streamql
 
 import "util"
@@ -115,7 +116,7 @@ writer_export_temp :: proc(w: ^Writer) -> (file_name: string, res: Result) {
 	}
 }
 
-@private
+@(private = "file")
 _make_temp_file :: proc(w: ^Writer) -> Result {
 	dir_name := "."
 	if w.file_name != "" {
@@ -134,13 +135,13 @@ _make_temp_file :: proc(w: ^Writer) -> Result {
 	return .Ok
 }
 
-@private
+@(private = "file")
 _set_file_name :: proc(w: ^Writer, file_name: string) {
 	w.file_name = file_name
 	w.is_detached = false
 }
 
-@private
+@(private = "file")
 _is_open :: proc(w: ^Writer) -> bool {
 	return w.fd != -1 && w.fd != os.stdout
 }

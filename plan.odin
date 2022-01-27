@@ -1,3 +1,4 @@
+//+private
 package streamql
 
 import "core:strings"
@@ -58,7 +59,7 @@ plan_build :: proc(sql: ^Streamql) -> Result {
 	return .Ok
 }
 
-@private
+@(private = "file")
 _make_join_proc :: proc(p: ^Plan, type: Join_Type, algo_str: string) -> Process {
 	msg: string
 	#partial switch type {
@@ -77,12 +78,12 @@ _make_join_proc :: proc(p: ^Plan, type: Join_Type, algo_str: string) -> Process 
 	return make_process(p, msg)
 }
 
-@private
+@(private = "file")
 _subquery_inlist :: proc(p: ^Plan, lg: ^Logic_Group, logic_proc: ^Process) -> Result {
 	return not_implemented()
 }
 
-@private
+@(private = "file")
 _check_for_special_expr :: proc(p: ^Plan, process: ^Process, expr: ^Expression) {
 	#partial switch v in &expr.data {
 	case Expr_Subquery:
@@ -96,7 +97,7 @@ _check_for_special_expr :: proc(p: ^Plan, process: ^Process, expr: ^Expression) 
 	}
 }
 
-@private
+@(private = "file")
 _check_for_special_exprs :: proc(p: ^Plan, process: ^Process, exprs: ^[dynamic]Expression) {
 	if exprs == nil {
 		return
@@ -109,7 +110,7 @@ _check_for_special_exprs :: proc(p: ^Plan, process: ^Process, exprs: ^[dynamic]E
 
 _check_for_special :: proc{_check_for_special_expr, _check_for_special_exprs}
 
-@private
+@(private = "file")
 _logic_to_process :: proc(p: ^Plan, logic_proc: ^Process, lg: ^Logic_Group, sb: ^strings.Builder) -> Result {
 	switch lg.type {
 	case .And:
@@ -141,7 +142,7 @@ _logic_to_process :: proc(p: ^Plan, logic_proc: ^Process, lg: ^Logic_Group, sb: 
 	return .Ok
 }
 
-@private
+@(private = "file")
 _insert_logic_proc :: proc(p: ^Plan, lg: ^Logic_Group, is_hash_join: bool = false) -> (ptr: ^Process, res: Result) {
 	logic_proc := make_process(p, "")
 	logic_proc.action__ = sql_logic
@@ -174,7 +175,7 @@ _insert_logic_proc :: proc(p: ^Plan, lg: ^Logic_Group, is_hash_join: bool = fals
 	return
 }
 
-@private
+@(private = "file")
 _from :: proc(sql: ^Streamql, q: ^Query) -> Result {
 	if len(q.sources) == 0 {
 		return .Ok
@@ -284,7 +285,7 @@ _from :: proc(sql: ^Streamql, q: ^Query) -> Result {
 	return .Ok
 }
 
-@private
+@(private = "file")
 _where :: proc(sql: ^Streamql, q: ^Query) -> Result {
 	if q.where_ == nil {
 		return .Ok
@@ -293,7 +294,7 @@ _where :: proc(sql: ^Streamql, q: ^Query) -> Result {
 	return res
 }
 
-@private
+@(private = "file")
 _group :: proc(sql: ^Streamql, q: ^Query) -> Result {
 	if q.groupby == nil {
 		return .Ok
@@ -301,7 +302,7 @@ _group :: proc(sql: ^Streamql, q: ^Query) -> Result {
 	return not_implemented()
 }
 
-@private
+@(private = "file")
 _having :: proc(sql: ^Streamql, q: ^Query) -> Result {
 	if q.having == nil {
 		return .Ok
@@ -310,7 +311,7 @@ _having :: proc(sql: ^Streamql, q: ^Query) -> Result {
 	return res
 }
 
-@private
+@(private = "file")
 _operation :: proc(sql: ^Streamql, q: ^Query, entry: ^bigraph.Node(Process), is_union: bool = false) -> Result {
 	prev := q.plan.curr
 	prev.out[0] = q.plan.op_true
@@ -341,7 +342,7 @@ _operation :: proc(sql: ^Streamql, q: ^Query, entry: ^bigraph.Node(Process), is_
 	return .Ok
 }
 
-@private
+@(private = "file")
 _union :: proc(sql: ^Streamql, q: ^Query) -> Result {
 	if len(q.unions) == 0 {
 		return .Ok
@@ -349,7 +350,7 @@ _union :: proc(sql: ^Streamql, q: ^Query) -> Result {
 	return not_implemented()
 }
 
-@private
+@(private = "file")
 _order :: proc(sql: ^Streamql, q: ^Query) -> Result {
 	if q.orderby == nil {
 		return .Ok
@@ -357,45 +358,46 @@ _order :: proc(sql: ^Streamql, q: ^Query) -> Result {
 	return not_implemented()
 }
 
-@private
+@(private = "file")
 _clear_passive :: proc(p: ^Plan) {
+
 }
 
-@private
+@(private = "file")
 _stranded_roots_for_delete :: proc(p: ^Plan) {
 }
 
-@private
+@(private = "file")
 _mark_roots_const :: proc(roots: ^[dynamic]^bigraph.Node(Process), id: u8) {
 }
 
-@private
+@(private = "file")
 _all_roots_are_const :: proc(roots: ^[dynamic]^bigraph.Node(Process)) -> bool {
 	return false
 }
 
-@private
+@(private = "file")
 _search_and_mark_const_selects :: proc(q: ^Query) {
 }
 
 
-@private
+@(private = "file")
 _activate_procs :: proc(sql: ^Streamql, q: ^Query) {
 }
 
-@private
+@(private = "file")
 _make_pipes :: proc(p: ^Plan) {
 }
 
-@private
+@(private = "file")
 _update_pipes :: proc(g: ^bigraph.Graph(Process)) {
 }
 
-@private
+@(private = "file")
 _calculate_execution_order :: proc(p: ^Plan) {
 }
 
-@private
+@(private = "file")
 _build :: proc(sql: ^Streamql, q: ^Query, entry: ^bigraph.Node(Process) = nil, is_union: bool = false) -> Result {
 	for subq in &q.subquery_exprs {
 		_build(sql, subq) or_return
@@ -455,7 +457,7 @@ _build :: proc(sql: ^Streamql, q: ^Query, entry: ^bigraph.Node(Process) = nil, i
 	return .Ok
 }
 
-@private
+@(private = "file")
 _print_col_sep :: proc(w: ^bufio.Writer, n: int) {
 	for n := n; n > 0; n -= 1 {
 		bufio.writer_write_byte(w, ' ')
@@ -463,7 +465,7 @@ _print_col_sep :: proc(w: ^bufio.Writer, n: int) {
 	bufio.writer_write_byte(w, '|')
 }
 
-@private
+@(private = "file")
 _print :: proc(p: ^Plan) {
 	io_w, ok := io.to_writer(os.stream_from_handle(os.stderr))
 	if !ok {

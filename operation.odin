@@ -1,3 +1,4 @@
+//+private
 package streamql
 
 import "core:strings"
@@ -168,7 +169,7 @@ op_expand_asterisks :: proc(q: ^Query, force: bool) {
 	}
 }
 
-@private
+@(private = "file")
 _expand_asterisk :: proc(exprs: ^[dynamic]Expression, src: ^Source, idx: ^int) {
 	aster_idx := idx^
 	src_idx := i32(exprs[idx^].data.(Expr_Asterisk))

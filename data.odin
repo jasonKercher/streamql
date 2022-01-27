@@ -1,3 +1,4 @@
+//+private
 package streamql
 
 Data_Type :: enum {

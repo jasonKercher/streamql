@@ -1,3 +1,4 @@
+//+private
 package streamql
 
 import "core:reflect"
