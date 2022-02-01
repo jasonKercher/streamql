@@ -21,6 +21,7 @@ Plan :: struct {
 	op_false: ^bigraph.Node(Process),
 	curr: ^bigraph.Node(Process),
 	plan_str: string,
+	rows_affected: u64,
 	state: bit_set[Plan_State],
 	src_count: u8,
 	id: u8,
@@ -33,7 +34,7 @@ make_plan :: proc() -> Plan {
 		op_false = bigraph.new_node(make_process(nil, "OP_FALSE")),
 		curr = bigraph.new_node(make_process(nil, "START")),
 	}
-	p.curr.data.props += {.Is_Passive}
+	p.curr.data.state += {.Is_Passive}
 
 	bigraph.add_node(&p.proc_graph, p.curr)
 	bigraph.add_node(&p.proc_graph, p.op_true)
@@ -43,6 +44,22 @@ make_plan :: proc() -> Plan {
 
 destroy_plan :: proc(p: ^Plan) {
 	bigraph.destroy(&p.proc_graph)
+}
+
+plan_reset :: proc(p: ^Plan) -> Result {
+	if .Is_Complete not_in p.state {
+		return .Ok
+	}
+
+	p.state -= {.Is_Complete}
+	p.rows_affected = 0
+
+	for node in &p.proc_graph.nodes {
+		process_enable(&node.data)
+	}
+
+	_preempt(p)
+	return .Ok
 }
 
 plan_print :: proc(sql: ^Streamql) {
@@ -57,6 +74,11 @@ plan_build :: proc(sql: ^Streamql) -> Result {
 		_build(sql, q) or_return
 	}
 	return .Ok
+}
+
+@(private = "file")
+_preempt :: proc(p: ^Plan) {
+	not_implemented()
 }
 
 @(private = "file")
@@ -157,7 +179,7 @@ _insert_logic_proc :: proc(p: ^Plan, lg: ^Logic_Group, is_hash_join: bool = fals
 	if is_hash_join {
 		p.curr.out[1] = logic_node
 		if logic_group_get_condition_count(lg) == 1 {
-			logic_node.data.props += {.Is_Passive}
+			logic_node.data.state += {.Is_Passive}
 		}
 	} else {
 		p.curr.out[0] = logic_node
@@ -166,7 +188,7 @@ _insert_logic_proc :: proc(p: ^Plan, lg: ^Logic_Group, is_hash_join: bool = fals
 	logic_node.out[0] = p.op_false
 
 	logic_true_proc := make_process(nil, "logic true")
-	logic_true_proc.props += {.Is_Passive}
+	logic_true_proc.state += {.Is_Passive}
 	logic_true_node := bigraph.add(&p.proc_graph, logic_true_proc)
 	logic_node.out[1] = logic_true_node
 	p.curr = logic_true_node
@@ -188,7 +210,7 @@ _from :: proc(sql: ^Streamql, q: ^Query) -> Result {
 	case string: /* File Source */
 		msg := fmt.tprintf("%s: stream read", v)
 		from_proc := make_process(p, msg)
-		from_proc.props += {.Root_Fifo0}
+		from_proc.state += {.Root_Fifo0}
 		from_proc.action__ = sql_read
 		from_proc.data = &q.sources[0]
 		from_node = bigraph.add(&p.proc_graph, from_proc)
@@ -218,7 +240,7 @@ _from :: proc(sql: ^Streamql, q: ^Query) -> Result {
 		if is_hash_join {
 			join_proc = _make_join_proc(p, src.join_type, "hash")
 			join_proc.action__ = sql_hash_join
-			join_proc.props += {.Has_Second_Input}
+			join_proc.state += {.Has_Second_Input}
 			join_proc.data = &src
 
 			if .Is_Stdin in src.props {
@@ -236,7 +258,7 @@ _from :: proc(sql: ^Streamql, q: ^Query) -> Result {
 					msg = fmt.tprintf("%s: random access", v)
 				}
 				read_proc := make_process(p, msg)
-				read_proc.props += {.Root_Fifo0, .Is_Secondary}
+				read_proc.state += {.Root_Fifo0, .Is_Secondary}
 				read_proc.action__ = sql_read
 				read_proc.data = &src
 				read_node = bigraph.add(&p.proc_graph, read_proc)
@@ -244,7 +266,7 @@ _from :: proc(sql: ^Streamql, q: ^Query) -> Result {
 			case ^Query: /* Subquery */
 				subquery_start_file_backed_input(&src.schema.data.(Reader))
 				read_proc := make_process(p, "file-backed read subquery")
-				read_proc.props += {.Is_Secondary}
+				read_proc.state += {.Is_Secondary}
 				read_proc.action__ = sql_read
 				read_proc.data = &src
 				read_node = bigraph.add(&q.plan.proc_graph, read_proc)
@@ -266,7 +288,7 @@ _from :: proc(sql: ^Streamql, q: ^Query) -> Result {
 			}
 			fmt.eprintf("Warning: slow cartesian join detected\n")
 			join_proc := _make_join_proc(&q.plan, src.join_type, "cartesian")
-			join_proc.props += {.Root_Fifo1}
+			join_proc.state += {.Root_Fifo1}
 			join_proc.data = &src
 			join_node := bigraph.add(&q.plan.proc_graph, join_proc)
 			join_node.is_root = true
@@ -323,8 +345,8 @@ _operation :: proc(sql: ^Streamql, q: ^Query, entry: ^bigraph.Node(Process), is_
 	 * ORDER BY...
 	 */
 	if is_union {
-		q.plan.op_false.data.props += {.Is_Passive}
-		if .Is_Passive in prev.data.props {
+		q.plan.op_false.data.state += {.Is_Passive}
+		if .Is_Passive in prev.data.state {
 			q.plan.curr = prev
 			return .Ok
 		}
@@ -358,9 +380,44 @@ _order :: proc(sql: ^Streamql, q: ^Query) -> Result {
 	return not_implemented()
 }
 
+/* In an effort to make building of the process graph easier
+ * passive nodes are used as a sort of link between the steps.
+ * Here, we *attempt* to remove the passive nodes and bridge
+ * the gaps between.
+ */
 @(private = "file")
 _clear_passive :: proc(p: ^Plan) {
+	p := p // TODO: remove
+	for n in &p.proc_graph.nodes {
+		for n.out[0] != nil {
+			if .Is_Passive not_in n.out[0].data.state {
+				break
+			}
+			n.out[0] = n.out[0].out[0]
+		}
+		for n.out[1] != nil {
+			if .Is_Passive not_in n.out[1].data.state {
+				break
+			}
+			/* This has to be wrong... but it works... */
+			if n.out[1].out[1] == nil {
+				n.out[1] = n.out[1].out[1]
+			} else {
+				n.out[1] = n.out[1].out[0]
+			}
+		}
+	}
 
+	nodes := &p.proc_graph.nodes
+
+	for i := 0; i < len(nodes); /* no advance */ {
+		if .Is_Passive in nodes[i].data.state {
+			process_destroy(&nodes[i].data)
+			bigraph.remove(&p.proc_graph, nodes[i])
+		} else {
+			i += 1
+		}
+	}
 }
 
 @(private = "file")
@@ -395,6 +452,16 @@ _update_pipes :: proc(g: ^bigraph.Graph(Process)) {
 
 @(private = "file")
 _calculate_execution_order :: proc(p: ^Plan) {
+	p.execute_vector = make([]Process, len(p.proc_graph.nodes))
+
+	node := bigraph.traverse(&p.proc_graph)
+	for i := 0; node != nil; i += 1 {
+		p.execute_vector[i] = node.data
+		node = bigraph.traverse(&p.proc_graph)
+	}
+
+	//new_wait_list: []^Process = make([]^Process, len(p.proc_graph.nodes))
+
 }
 
 @(private = "file")
@@ -424,7 +491,7 @@ _build :: proc(sql: ^Streamql, q: ^Query, entry: ^bigraph.Node(Process) = nil, i
 
 	if len(q.plan.proc_graph.nodes) == 0 {
 		if entry != nil {
-			entry.data.props += {.Is_Const}
+			entry.data.state += {.Is_Const}
 		}
 		return .Ok
 	}

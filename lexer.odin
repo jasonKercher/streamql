@@ -446,8 +446,8 @@ _init_map :: proc(p: ^Parser) {
 @(private="file")
 _skip_whitespace :: proc(p: ^Parser, idx: ^u32)
 {
-	for ; idx^ < u32(len(p.q)) && unicode.is_space(rune(p.q[idx^])); idx^ += 1 {
-		if p.q[idx^] == '\n' {
+	for ; idx^ < u32(len(p.text)) && unicode.is_space(rune(p.text[idx^])); idx^ += 1 {
+		if p.text[idx^] == '\n' {
 			append(&p.lf_vec, idx^)
 		}
 	}
@@ -456,11 +456,11 @@ _skip_whitespace :: proc(p: ^Parser, idx: ^u32)
 @(private="file")
 _get_name :: proc(p: ^Parser, group: int, idx: ^u32) {
 	begin := idx^
-	for ; idx^ < u32(len(p.q)) && (p.q[idx^] == '_' ||
-	      unicode.is_digit(rune(p.q[idx^])) ||
-	      unicode.is_alpha(rune(p.q[idx^]))); idx^ += 1 {}
+	for ; idx^ < u32(len(p.text)) && (p.text[idx^] == '_' ||
+	      unicode.is_digit(rune(p.text[idx^])) ||
+	      unicode.is_alpha(rune(p.text[idx^]))); idx^ += 1 {}
 
-	type, ret := bytemap.get(&p.tok_map, p.q[begin:idx^])
+	type, ret := bytemap.get(&p.tok_map, p.text[begin:idx^])
 	if !ret {
 		type = .Query_Name
 	}
@@ -476,9 +476,9 @@ _get_name :: proc(p: ^Parser, group: int, idx: ^u32) {
 _get_string :: proc(p: ^Parser, group: int, idx: ^u32) -> Result {
 	idx^ += 1
 	real_begin := idx^
-	for ; idx^ < u32(len(p.q)) && p.q[idx^] != '\''; idx^ += 1 {}
+	for ; idx^ < u32(len(p.text)) && p.text[idx^] != '\''; idx^ += 1 {}
 
-	if idx^ >= u32(len(p.q)) {
+	if idx^ >= u32(len(p.text)) {
 		return lex_error(p, idx^, "unmatched '\''")
 	}
 
@@ -502,9 +502,9 @@ _get_string :: proc(p: ^Parser, group: int, idx: ^u32) -> Result {
 _get_qualified_name :: proc(p: ^Parser, group: int, idx: ^u32) -> Result {
 	idx^ += 1
 	real_begin := idx^
-	for ; idx^ < u32(len(p.q)) && p.q[idx^] != ']'; idx^ += 1 {}
+	for ; idx^ < u32(len(p.text)) && p.text[idx^] != ']'; idx^ += 1 {}
 
-	if idx^ >= u32(len(p.q)) {
+	if idx^ >= u32(len(p.text)) {
 		return lex_error(p, idx^, "unmatched '['")
 	}
 
@@ -531,9 +531,9 @@ _get_numeric :: proc(p: ^Parser, group: int, idx: ^u32) -> Result {
 	begin := idx^
 	is_float: bool
 
-	for ; idx^ < u32(len(p.q)) &&
-	    (unicode.is_digit(rune(p.q[idx^])) || p.q[idx^] == '.'); idx^ += 1 {
-		if p.q[idx^] == '.' {
+	for ; idx^ < u32(len(p.text)) &&
+	    (unicode.is_digit(rune(p.text[idx^])) || p.text[idx^] == '.'); idx^ += 1 {
+		if p.text[idx^] == '.' {
 			if is_float {
 				return lex_error(p, idx^, "malformed decimal")
 			}
@@ -560,9 +560,9 @@ _get_variable :: proc(p: ^Parser, group: int, idx: ^u32) {
 	begin := idx^
 	idx^ += 1
 
-	for ; p.q[idx^] == '_' ||
-	      unicode.is_digit(rune(p.q[idx^])) ||
-	      unicode.is_alpha(rune(p.q[idx^])); idx^ += 1 {
+	for ; p.text[idx^] == '_' ||
+	      unicode.is_digit(rune(p.text[idx^])) ||
+	      unicode.is_alpha(rune(p.text[idx^])); idx^ += 1 {
 	}
 
 	append(&p.tokens, Token {
@@ -577,14 +577,14 @@ _get_block_comment :: proc(p: ^Parser, group: int, idx: ^u32) -> Result {
 
 	begin := idx^
 
-	for ; idx^+1 < u32(len(p.q)) &&
-	    !(p.q[idx^] == '*' && p.q[idx^+1] == '/'); idx^ += 1 {
-		if p.q[idx^] == '\n' {
+	for ; idx^+1 < u32(len(p.text)) &&
+	    !(p.text[idx^] == '*' && p.text[idx^+1] == '/'); idx^ += 1 {
+		if p.text[idx^] == '\n' {
 			append(&p.lf_vec, idx^)
 		}
 	}
 
-	if idx^+1 >= u32(len(p.q)) {
+	if idx^+1 >= u32(len(p.text)) {
 		return lex_error(p, idx^, "unmatched `/*'")
 	}
 
@@ -602,9 +602,9 @@ _get_block_comment :: proc(p: ^Parser, group: int, idx: ^u32) -> Result {
 @(private="file")
 _get_line_comment :: proc(p: ^Parser, group: int, idx: ^u32) -> Result {
 	begin := idx^
-	offset := strings.index_byte(p.q[idx^:], '\n')
+	offset := strings.index_byte(p.text[idx^:], '\n')
 	if offset == -1 {
-		idx^ = u32(len(p.q))
+		idx^ = u32(len(p.text))
 	} else {
 		idx^ += u32(offset)
 		append(&p.lf_vec, idx^)
@@ -629,8 +629,8 @@ _get_symbol :: proc(p: ^Parser, group: int, idx: ^u32) -> Result {
 	ret: bool
 
 	/* Check for 2 character symbols first */
-	if begin < u32(len(p.q)) {
-		type, ret = bytemap.get(&p.tok_map, p.q[begin:begin+2])
+	if begin < u32(len(p.text)) {
+		type, ret = bytemap.get(&p.tok_map, p.text[begin:begin+2])
 	}
 
 	if ret {
@@ -643,7 +643,7 @@ _get_symbol :: proc(p: ^Parser, group: int, idx: ^u32) -> Result {
 		idx^ += 2
 	} else {
 		idx^ += 1
-		type, ret = bytemap.get(&p.tok_map, p.q[begin:idx^])
+		type, ret = bytemap.get(&p.tok_map, p.text[begin:idx^])
 	}
 
 	if !ret {
@@ -676,27 +676,27 @@ _lex_tokenize :: proc(p: ^Parser) -> Result {
 
 	ret := 0
 
-	for ret == 0 && i < u32(len(p.q)) {
+	for ret == 0 && i < u32(len(p.text)) {
 		tok_len := 0
 		switch {
-		case unicode.is_space(rune(p.q[i])):
+		case unicode.is_space(rune(p.text[i])):
 			_skip_whitespace(p, &i)
-		case p.q[i] == '\'':
+		case p.text[i] == '\'':
 			_get_string(p, group, &i)
-		case p.q[i] == '[':
+		case p.text[i] == '[':
 			_get_qualified_name(p, group, &i) or_return
-		case unicode.is_digit(rune(p.q[i])) ||
-		    (i+1 < u32(len(p.q)) && unicode.is_digit(rune(p.q[i]))):
+		case unicode.is_digit(rune(p.text[i])) ||
+		    (i+1 < u32(len(p.text)) && unicode.is_digit(rune(p.text[i]))):
 			_get_numeric(p, group, &i) or_return
-		case p.q[i] == '@':
+		case p.text[i] == '@':
 			_get_variable(p, group, &i)
-		case p.q[i] == '(':
+		case p.text[i] == '(':
 			group += 1
 			bit_array.set(&p.consumed, len(p.tokens))
 			append(&group_stack, group)
 			append(&p.tokens, Token {type=.Sym_Lparen, group=u16(group), begin=i, len=1})
 			i += 1
-		case p.q[i] == ')':
+		case p.text[i] == ')':
 			if len(group_stack) == 1 {
 				return lex_error(p, i, "unmatched ')'")
 			}
@@ -705,11 +705,11 @@ _lex_tokenize :: proc(p: ^Parser) -> Result {
 			i += 1
 			pop(&group_stack)
 			group = group_stack[len(group_stack)-1]
-		case _is_symbol(p.q[i]):
+		case _is_symbol(p.text[i]):
 			_get_symbol(p, group, &i) or_return
-		case p.q[i] == '_' ||
-		    unicode.is_digit(rune(p.q[i])) ||
-		    unicode.is_alpha(rune(p.q[i])):
+		case p.text[i] == '_' ||
+		    unicode.is_digit(rune(p.text[i])) ||
+		    unicode.is_alpha(rune(p.text[i])):
 			_get_name(p, group, &i)
 		case:
 			return lex_error(p, i)
@@ -726,7 +726,7 @@ _lex_tokenize :: proc(p: ^Parser) -> Result {
 	//for tok in p.tokens {
 	//	if enum_name, ok := fmt.enum_value_to_string(tok.type); ok {
 	//		if tok.len > 0 {
-	//			fmt.println(enum_name, p.q[tok.begin:tok.begin+tok.len])
+	//			fmt.println(enum_name, p.text[tok.begin:tok.begin+tok.len])
 	//		} else {
 	//			fmt.println(enum_name)
 	//		}
@@ -741,38 +741,38 @@ lex_error_check :: proc(t: ^testing.T) {
 	p := make_parser()
 
 	/* Unmatched tokens */
-	p.q = "select a,b,c,[ntll from foo where 1=1"
+	p.text = "select a,b,c,[ntll from foo where 1=1"
 	testing.expect_value(t, lex_lex(&p), Result.Error)
 
-	p.q = "select a,b,c,ntll] from foo where 1=1"
+	p.text = "select a,b,c,ntll] from foo where 1=1"
 	testing.expect_value(t, lex_lex(&p), Result.Error)
 
-	p.q = "select 124+35*24 / (124-2 from [foo] where 1<>2"
+	p.text = "select 124+35*24 / (124-2 from [foo] where 1<>2"
 	testing.expect_value(t, lex_lex(&p), Result.Error)
 
-	p.q = "select 124+35*24 / (124-2))"
+	p.text = "select 124+35*24 / (124-2))"
 	testing.expect_value(t, lex_lex(&p), Result.Error)
 
-	p.q = "select /* a comment * / 1,2 from foo"
+	p.text = "select /* a comment * / 1,2 from foo"
 	testing.expect_value(t, lex_lex(&p), Result.Error)
 
 	/* Will throw p error as multiply, divide */
-	//p.q = "select / * a comment */ 1,2 from foo"
+	//p.text = "select / * a comment */ 1,2 from foo"
 	//testing.expect_value(t, lex_lex(&p), Result.Error)
 
 	/* Illegal symbols */
-	p.q = "select $var from foo join foo on 1=1"
+	p.text = "select $var from foo join foo on 1=1"
 	testing.expect_value(t, lex_lex(&p), Result.Error)
 
-	p.q = "select `col` from foo join foo on 1=1"
+	p.text = "select `col` from foo join foo on 1=1"
 	testing.expect_value(t, lex_lex(&p), Result.Error)
 
 	/* Malformed number */
-	p.q = "select 1234.1234.1234 from foo join foo on 1=1"
+	p.text = "select 1234.1234.1234 from foo join foo on 1=1"
 	testing.expect_value(t, lex_lex(&p), Result.Error)
 
 	/* Oh shit this is actually legal in SQL Server... */
-	//p.q = "select 1234shnt from foo join foo on 1=1"
+	//p.text = "select 1234shnt from foo join foo on 1=1"
 	//testing.expect_value(t, lex_lex(&p), Result.Error)
 
 	destroy_parser(&p)
@@ -789,7 +789,7 @@ lex_check :: proc(t: ^testing.T) {
 	 */
 
 	//         01      2   3    4   5    6   7  890 1
-	p.q = "select col from foo join foo on 1=1"
+	p.text = "select col from foo join foo on 1=1"
 	testing.expect_value(t, lex_lex(&p), Result.Ok)
 	testing.expect_value(t, len(p.tokens), 12)
 	testing.expect_value(t, p.tokens[0].type, Token_Type.Query_Begin)
@@ -810,7 +810,7 @@ lex_check :: proc(t: ^testing.T) {
 	//      9    0   1
 	//23
 	//4  56      78 9
-	p.q = `
+	p.text = `
 	select (
 		select (1 + 2 * 5 + (33-(1))) [bar baz]
 		from foo f

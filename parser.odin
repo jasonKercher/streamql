@@ -4,12 +4,15 @@ package streamql
 import "bytemap"
 
 import "core:fmt"
+import "core:strings"
 import "core:math/bits"
 import "core:container/bit_array"
 import "core:testing"
 
+PREVIEW_MAX :: 30
+
 Parser :: struct {
-	q:       string,
+	text:    string,
 	lf_vec:  [dynamic]u32,
 	tokens:  [dynamic]Token,
 	tok_map: bytemap.Map(Token_Type),
@@ -61,12 +64,12 @@ token_to_string :: proc(p: ^Parser, tok: ^Token) -> string {
 	if tok == nil {
 		return ""
 	}
-	return p.q[tok.begin:tok.begin+tok.len]
+	return p.text[tok.begin:tok.begin+tok.len]
 }
 
 parse_error :: proc(p: ^Parser, msg: string) -> Result {
 	error_tok := p.tokens[p.curr]
-	error_str := p.q[error_tok.begin:error_tok.begin+error_tok.len]
+	error_str := p.text[error_tok.begin:error_tok.begin+error_tok.len]
 	line, off := parse_get_pos(p, p.tokens[p.curr].begin)
 
 	fmt.eprintf("%s at `%s': (line: %d, pos: %d)\n", msg, error_str, line, off)
@@ -75,7 +78,7 @@ parse_error :: proc(p: ^Parser, msg: string) -> Result {
 
 parse_parse :: proc(sql: ^Streamql, query_str: string) -> Result {
 	p := &sql.parser
-	p.q = query_str
+	p.text = query_str
 	p.q_count = 0
 
 	lex_lex(p) or_return
@@ -1411,7 +1414,19 @@ _parse_enter :: proc(sql: ^Streamql) -> Result {
 
 	ret : Result
 
-	parse_enter_sql(sql)
+	curr_tok := p.tokens[p.curr]
+	preview_end := u32(len(p.text)) - curr_tok.begin
+	if preview_end - curr_tok.begin > PREVIEW_MAX {
+		preview_end = curr_tok.begin + PREVIEW_MAX
+	}
+	
+	/* Clone so we can edit */
+	allocated: bool
+	query_text := strings.clone(p.text[curr_tok.begin:preview_end])
+	query_text, allocated = strings.replace_all(query_text, "\n", " ")
+	query_text, allocated = strings.replace_all(query_text, "\r", " ")
+
+	parse_enter_sql(sql, query_text)
 
 	#partial switch p.tokens[p.curr].type {
 	case .Query_Name:

@@ -1,6 +1,8 @@
 //+private
 package streamql
 
+import "core:os"
+import "core:fmt"
 import "core:strings"
 
 op_get_schema :: proc(gen: ^Operation) -> ^Schema {
@@ -137,6 +139,67 @@ op_set_writer :: proc(gen: ^Operation, w: ^Writer) {
 	case Delete:
 		op.writer = w^
 	}
+}
+
+/* TODO merge with reset?? */
+op_preop :: proc(sql: ^Streamql, q: ^Query) -> Result {
+	if q.plan.op_true != nil && .Has_Stepped in q.plan.state {
+		return .Ok
+	}
+
+	switch op in &q.operation {
+	case Select:
+		return select_preop(sql, &op, q)
+	case Update:
+		return update_preop(&op, q)
+	case Delete:
+		return delete_preop(&op, q)
+	case Set:
+		return set_preop(&op, q)
+	case Branch:
+		return branch_preop(&op, q)
+	}
+	unreachable()
+}
+
+op_reset :: proc(sql: ^Streamql, q: ^Query, has_executed: bool) -> Result {
+	op_table: ^Source
+	is_select := false
+	#partial switch op in &q.operation {
+	case Update:
+		op_table = &q.sources[op.src_idx]
+		update_reset(&op) or_return
+	case Delete:
+		op_table = &q.sources[op.src_idx]
+		delete_reset(&op) or_return
+	case Select:
+		select_reset(&op) or_return
+		is_select = true
+	}
+
+	if op_table != nil && q.into_table_name == "" {
+		/* TODO: Clone ?? */
+		q.into_table_name = op_table.schema.data.(Reader).file_name
+	}
+
+	if q.into_table_var != -1 {
+		return not_implemented()
+	}
+
+	op_writer := op_get_writer(&q.operation)
+	if q.union_id == 0 && q.into_table_name != "" {
+		if has_executed && is_select && .Overwrite not_in sql.config && os.is_file(q.into_table_name) {
+			fmt.eprintf("cannot SELECT INTO: file `%s' already exists\n", q.into_table_name)
+			return .Error
+		}
+		writer_open(op_writer, q.into_table_name) or_return
+	}
+
+	if q.union_id == 0 && q.orderby != nil {
+		return not_implemented()
+	}
+
+	return .Ok
 }
 
 op_expand_asterisks :: proc(q: ^Query, force: bool) {

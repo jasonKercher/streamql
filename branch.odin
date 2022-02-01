@@ -25,6 +25,10 @@ Branch :: struct {
 	true_idx: i32,
 }
 
+branch_preop :: proc(b: ^Branch, q: ^Query) -> Result {
+	return not_implemented()
+}
+
 branch_apply_process :: proc(q: ^Query) -> Result {
 	return not_implemented()
 }

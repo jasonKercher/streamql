@@ -2,26 +2,32 @@
 package streamql
 
 
-sql_read :: proc(process: ^Process) -> Result {
-	return not_implemented()
+sql_read :: proc(process: ^Process) -> Process_Result {
+	not_implemented()
+	return .Error
 }
 
-sql_cartesian_join :: proc(process: ^Process) -> Result {
-	return not_implemented()
+sql_cartesian_join :: proc(process: ^Process) -> Process_Result {
+	not_implemented()
+	return .Error
 }
 
-sql_hash_join :: proc(process: ^Process) -> Result {
-	return not_implemented()
+sql_hash_join :: proc(process: ^Process) -> Process_Result {
+	not_implemented()
+	return .Error
 }
 
-sql_left_join_logic :: proc(process: ^Process) -> Result {
-	return not_implemented()
+sql_left_join_logic :: proc(process: ^Process) -> Process_Result {
+	not_implemented()
+	return .Error
 }
 
-sql_logic :: proc(process: ^Process) -> Result {
-	return not_implemented()
+sql_logic :: proc(process: ^Process) -> Process_Result {
+	not_implemented()
+	return .Error
 }
 
-sql_select :: proc(process: ^Process) -> Result {
-	return not_implemented()
+sql_select :: proc(process: ^Process) -> Process_Result {
+	not_implemented()
+	return .Error
 }

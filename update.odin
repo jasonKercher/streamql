@@ -9,6 +9,15 @@ Update :: struct {
 	columns: [dynamic]Expression,
 	values: [dynamic]Expression,
 	top_count: i64,
+	src_idx: i32,
+}
+
+update_reset :: proc(u: ^Update) -> Result {
+	return not_implemented()
+}
+
+update_preop :: proc(u: ^Update, q: ^Query) -> Result {
+	return not_implemented()
 }
 
 update_add_expression :: proc(u: ^Update, expr: ^Expression) -> (^Expression, Result) {

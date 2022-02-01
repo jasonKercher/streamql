@@ -53,6 +53,10 @@ construct_source :: proc {
 	construct_source_subquery,
 }
 
+source_reset :: proc(src: ^Source, has_executed: bool) -> Result {
+	return not_implemented()
+}
+
 source_resolve_schema :: proc(sql: ^Streamql, src: ^Source) -> Result {
 	if .Is_Preresolved in src.schema.props {
 		return .Ok

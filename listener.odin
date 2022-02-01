@@ -38,7 +38,7 @@ Listener :: struct {
 	sub_id: i16,
 }
 
-parse_enter_sql :: proc(sql: ^Streamql) -> Result {
+parse_enter_sql :: proc(sql: ^Streamql, query_text: string) -> Result {
 	if .Parse_Only in sql.config {
 		fmt.eprintf("ENTER SQL\n")
 		return .Ok
@@ -47,7 +47,7 @@ parse_enter_sql :: proc(sql: ^Streamql) -> Result {
 	l := &sql.listener
 	l.sub_id = 0
 
-	q := new_query(l.sub_id)
+	q := new_query(l.sub_id, query_text)
 	q.idx = u32(len(sql.queries))
 	q.next_idx = q.idx + 1
 	append(&sql.queries, q)

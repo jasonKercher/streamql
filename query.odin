@@ -1,6 +1,7 @@
 //+private
 package streamql
 
+import "util"
 import "core:os"
 import "core:fmt"
 import "core:strings"
@@ -28,7 +29,7 @@ Query :: struct {
 	var_source_vars: [dynamic]i32,
 	var_sources: [dynamic]i32,
 	var_expr_vars: [dynamic]i32,
-	var_exprs: [dynamic]i32,
+	var_exprs: [dynamic]^Expression,
 	joinable_logic: [dynamic]^Logic,
 	into_table_name: string,
 	preview_text: string,
@@ -47,14 +48,104 @@ Query :: struct {
 /* All dynamic fields are initialized as needed.
  * Also note that queries only exist as pointers.
  */
-new_query :: proc(sub_id: i16) -> ^Query {
+new_query :: proc(sub_id: i16, query_text: string = "") -> ^Query {
 	q := new(Query)
 	q^ = {
+		preview_text = query_text,
 		top_count = bits.I64_MAX,
 		into_table_var = -1,
 		sub_id = sub_id,
 	}
 	return q
+}
+
+@(private = "file")
+_preflight :: proc(sql: ^Streamql, q: ^Query) -> Result {
+	for subq in q.subquery_exprs {
+		_preflight(sql, subq) or_return
+	}
+	for unionq in q.unions {
+		_preflight(sql, unionq) or_return
+	}
+
+	for var_idx in q.var_expr_vars {
+		return not_implemented()
+	}
+
+	for var_idx in q.var_source_vars {
+		return not_implemented()
+	}
+
+	has_executed := q.plan.op_true == nil || .Is_Complete in q.plan.state
+	op_reset(sql, q, has_executed) or_return
+
+	for src in &q.sources {
+		source_reset(&src, has_executed)
+	}
+
+	group_reset(q.groupby) or_return
+	return group_reset(q.distinct_)
+}
+
+query_prepare :: proc(sql: ^Streamql, q: ^Query) -> Result {
+	_preflight(sql, q) or_return
+	op_preop(sql, q) or_return
+	return plan_reset(&q.plan)
+}
+
+query_exec :: proc(sql: ^Streamql, q: ^Query) -> Result {
+	res := Result.Running
+	//org_rows_affected := q.plan.rows_affected
+	rows: int
+
+	for res == .Running {
+		rows, res = _exec_one_pass(q.plan.execute_vector)
+		q.plan.rows_affected += u64(rows)
+	}
+
+	return res
+}
+
+query_exec_thread :: proc(sql: ^Streamql, q: ^Query) -> Result {
+	return not_implemented()
+}
+
+@(private = "file")
+_exec_one_pass :: proc(exec_vector: []Process) -> (rows_affected: int, res: Result) {
+	exec_vector := exec_vector
+	res = .Eof
+
+	for process in &exec_vector {
+		if .Is_Enabled not_in process.state {
+			continue
+		}
+
+		// TODO: this is flawed...
+		if len(process.wait_list) != 0 {
+			if _check_wait_list(process.wait_list) {
+				res = .Running
+				continue
+			}
+		}
+
+
+		#partial switch process.action__(&process) {
+		case .Complete:
+			process_disable(&process)
+		case .Error:
+			return 0, .Error
+		case:
+			res = .Running
+		}
+		//if .Wait_On_In0 in process.state {
+		//	res = .Running
+		//}
+		if .Is_Op_True in process.state {
+			rows_affected = process.rows_affected
+		}
+	}
+
+	return
 }
 
 query_add_source :: proc(sql: ^Streamql, q: ^Query, table_name, schema_name: string) -> Result {
@@ -68,7 +159,7 @@ query_add_source :: proc(sql: ^Streamql, q: ^Query, table_name, schema_name: str
 		src.props += {.Must_Reopen}
 	}
 
-	if table_name == "__STDIN" {
+	if util.string_compare_nocase("__stdin", table_name) == 0 {
 		if ._Allow_Stdin in sql.config {
 			src.props += {.Is_Stdin}
 			sql.config -= {._Allow_Stdin}
@@ -165,4 +256,8 @@ _add_logic_expression :: proc(q: ^Query, expr: ^Expression) -> (^Expression, Res
 	return logic_add_expression(lg.condition, expr), .Ok
 }
 
-
+@(private = "file")
+_check_wait_list :: proc(wait_list: []^Process) -> bool {
+	not_implemented()
+	return false
+}
