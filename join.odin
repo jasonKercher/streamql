@@ -28,3 +28,10 @@ new_hash_join :: proc() -> ^Hash_Join {
 hash_join_init :: proc(src: ^Source) {
 	not_implemented()
 }
+
+hash_join_reset :: proc(join: ^Hash_Join) {
+	if join == nil {
+		return
+	}
+	not_implemented()
+}

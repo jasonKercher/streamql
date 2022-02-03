@@ -9,21 +9,21 @@ Select :: struct {
 	select__: Select_Call,
 	schema: Schema,
 	writer: Writer,
-	curr: ^Select,
 	expressions: [dynamic]Expression,
-	union_selects: [dynamic]^Select,
+	select_list: [dynamic]^Select,
 	const_dest: ^Expression,
 	top_count: i64,
 	offset: i64,
 	row_num: i64,
 	rows_affected: i64,
-	union_idx: i32,
+	select_idx: i32,
 }
 
 make_select :: proc() -> Select {
 	return Select {
 		expressions = make([dynamic]Expression),
-		union_idx = -1,
+		select_list = make([dynamic]^Select),
+		select_idx = -1,
 	}
 }
 
@@ -36,17 +36,16 @@ select_reset :: proc(s: ^Select) -> Result {
 		return not_implemented()
 	}
 
-	if len(s.union_selects) != 0 {
-		s.union_idx = 0
+	if len(s.select_list) != 0 {
+		s.select_idx = 0
 	}
-	s.curr = s
 
 	return .Ok
 }
 
 select_preop :: proc(sql: ^Streamql, s: ^Select, q: ^Query) -> Result {
-	if len(s.union_selects) != 0 {
-		s.union_idx = 0
+	if len(s.select_list) != 0 {
+		s.select_idx = 0
 	}
 
 	if s.schema.write_io == .Delimited || 

@@ -27,7 +27,16 @@ sql_logic :: proc(process: ^Process) -> Process_Result {
 	return .Error
 }
 
-sql_select :: proc(process: ^Process) -> Process_Result {
+sql_groupby :: proc(process: ^Process) -> Process_Result {
 	not_implemented()
+	return .Error
+}
+
+sql_select :: proc(process: ^Process) -> Process_Result {
+	main_select := process.data.(^Select)
+	current_select := &main_select.select_list[main_select.select_idx]
+
+
+
 	return .Error
 }

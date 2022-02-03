@@ -2,7 +2,6 @@ package util
 
 import "core:path/filepath"
 import "core:fmt"
-import "core:os"
 
 Fuzzy_Result :: enum {
 	Found,
@@ -21,8 +20,6 @@ _delete_file_list :: proc(files: []string) {
 
 fuzzy_file_match :: proc(name: string) -> (string, Fuzzy_Result) {
 	dir := filepath.dir(name)
-	base := filepath.base(name)
-
 	files := get_files_from_dir(dir)
 	defer _delete_file_list(files)
 

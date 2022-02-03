@@ -7,6 +7,7 @@ import "core:fmt"
 import "core:io"
 import "core:os"
 import "bigraph"
+import "fifo"
 
 Plan_State :: enum {
 	Has_Stepped,
@@ -16,10 +17,12 @@ Plan_State :: enum {
 
 Plan :: struct {
 	execute_vector: []Process,
+	root_fifos: []fifo.Fifo(^Record),
 	proc_graph: bigraph.Graph(Process),
 	op_true: ^bigraph.Node(Process),
 	op_false: ^bigraph.Node(Process),
 	curr: ^bigraph.Node(Process),
+	_root_data: []Record,
 	plan_str: string,
 	rows_affected: u64,
 	state: bit_set[Plan_State],
@@ -78,7 +81,24 @@ plan_build :: proc(sql: ^Streamql) -> Result {
 
 @(private = "file")
 _preempt :: proc(p: ^Plan) {
-	not_implemented()
+	if len(p._root_data) == 0 {
+		return
+	}
+
+	buf_idx := -1
+	for rec, i in &p._root_data {
+		rec.next = nil
+		rec.root_fifo_idx = i32(i % len(p.root_fifos))
+		if rec.root_fifo_idx == 0 {
+			buf_idx += 1
+		}
+
+		p.root_fifos[rec.root_fifo_idx].buf[buf_idx] = &rec
+	}
+
+	for f in &p.root_fifos {
+		fifo.set_full(&f)
+	}
 }
 
 @(private = "file")
@@ -422,32 +442,151 @@ _clear_passive :: proc(p: ^Plan) {
 
 @(private = "file")
 _stranded_roots_for_delete :: proc(p: ^Plan) {
+	for root in &p.proc_graph.roots {
+		if root == p.op_false || root == p.op_true {
+			continue
+		}
+
+		if root.out[0] == nil && root.out[1] == nil {
+			root.data.state += {.Is_Passive}
+			p.op_false.data.state -= {.Wait_In0}
+			p.op_false.data.state += {.In0_Always_Dead}
+		}
+	}
+
+	_clear_passive(p)
+	bigraph.set_roots(&p.proc_graph)
 }
 
 @(private = "file")
 _mark_roots_const :: proc(roots: ^[dynamic]^bigraph.Node(Process), id: u8) {
+	for root in roots {
+		pr := &root.data
+		if pr.plan_id != id {
+			continue
+		}
+		if pr.action__  != sql_read {
+			if .Root_Fifo0 not_in pr.state && .Root_Fifo1 not_in pr.state {
+				pr.state += {.Root_Fifo0}
+			}
+			pr.state += {.Is_Const}
+		}
+	}
 }
 
 @(private = "file")
 _all_roots_are_const :: proc(roots: ^[dynamic]^bigraph.Node(Process)) -> bool {
-	return false
+	for root in roots {
+		if .Is_Const not_in root.data.state {
+			return false
+		}
+	}
+	return true
 }
 
 @(private = "file")
-_search_and_mark_const_selects :: proc(q: ^Query) {
+_search_and_mark_const_selects :: proc(q: ^Query) -> bool {
+	select, is_select := &q.operation.(Select)
+	is_const := true
+
+	for src in q.sources {
+		if subq, is_subq := src.data.(^Query); is_subq {
+			sub_is_const := _search_and_mark_const_selects(subq)
+			if !sub_is_const {
+				is_const = false
+			}
+		} else {
+			is_const = false
+		}
+	}
+
+	if is_select && is_const  {
+		select.schema.props += {.Is_Const}
+	}
+
+	return is_const
 }
 
+_get_union_pipe_count :: proc(nodes: ^[dynamic]^bigraph.Node(Process)) -> int {
+	total := 0
+	for node in nodes {
+		total += len(node.data.union_data.n)
+	}
+	return total
+}
 
 @(private = "file")
 _activate_procs :: proc(sql: ^Streamql, q: ^Query) {
+	graph_size := len(q.plan.proc_graph.nodes)
+	union_pipes := _get_union_pipe_count(&q.plan.proc_graph.nodes)
+	proc_count := graph_size + union_pipes
+	fifo_base_size := proc_count * int(sql.pipe_factor)
+
+	root_fifo_vec := make([dynamic]fifo.Fifo(^Record))
+
+	pipe_count := 0
+	
+	for node in &q.plan.proc_graph.nodes {
+		process_activate(&node.data, &root_fifo_vec, &pipe_count, fifo_base_size)
+	}
+
+	if len(root_fifo_vec) == 0 {
+		return
+	}
+
+	root_size := fifo_base_size * pipe_count
+	for f in &root_fifo_vec {
+		fifo.set_size(&f, u16(root_size / len(root_fifo_vec) + 1))
+	}
+	
+	q.plan._root_data = make([]Record, root_size)
+	q.plan.root_fifos = root_fifo_vec[:]
+
+	_preempt(&q.plan)
+
+	if sql.verbosity == .Debug {
+		fmt.eprintf("processes: %d\npipes: %d\nroot size: %d\n", proc_count, pipe_count, root_size)
+	}
 }
 
 @(private = "file")
 _make_pipes :: proc(p: ^Plan) {
+	for n in &p.proc_graph.nodes {
+		if n.out[0] != nil {
+			proc0 := n.out[0].data
+			if .Is_Dual_Link in n.out[0].data.state {
+				n.data.output[0] = proc0.input[0]
+				n.data.output[1] = proc0.input[1]
+				continue
+			}
+			n.data.output[0] = .Is_Secondary in n.data.state ? proc0.output[1] : proc0.input[0]
+		}
+
+		if n.out[1] != nil {
+			proc1 := n.out[1].data
+			if .Is_Dual_Link in n.out[0].data.state {
+				n.data.output[0] = proc1.input[0]
+				n.data.output[1] = proc1.input[1]
+				continue
+			}
+			n.data.output[1] = .Is_Secondary in n.data.state ? proc1.output[1] : proc1.input[0]
+		}
+	}
 }
 
 @(private = "file")
 _update_pipes :: proc(g: ^bigraph.Graph(Process)) {
+	for bigraph.traverse(g) != nil {}
+
+	for n in g.nodes {
+		assert(n.visit_count > 0)
+		n.data.input[0].input_count = u8(n.visit_count)
+		if n.data.input[1] != nil {
+			n.data.input[1].input_count = u8(n.visit_count)
+		}
+	}
+
+	bigraph.reset(g)
 }
 
 @(private = "file")

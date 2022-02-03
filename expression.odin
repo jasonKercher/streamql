@@ -235,7 +235,7 @@ expression_link :: proc(col: ^Expr_Column_Name, item: Schema_Item, src_idx: int,
 	}
 }
 
-expression_get_int :: proc(expr: ^Expression, recs: []Record = nil) -> (i64, Result) {
+expression_get_int :: proc(expr: ^Expression, recs: ^Record = nil) -> (i64, Result) {
 	#partial switch v in &expr.data {
 	case Expr_Constant:
 		return data_to_int((^Data)(&v), expr.data_type)
@@ -243,7 +243,7 @@ expression_get_int :: proc(expr: ^Expression, recs: []Record = nil) -> (i64, Res
 	return 0, not_implemented()
 }
 
-expression_get_float :: proc(expr: ^Expression, recs: []Record = nil) -> (f64, Result) {
+expression_get_float :: proc(expr: ^Expression, recs: ^Record = nil) -> (f64, Result) {
 	#partial switch v in &expr.data {
 	case Expr_Constant:
 		return data_to_float((^Data)(&v), expr.data_type)
@@ -251,7 +251,7 @@ expression_get_float :: proc(expr: ^Expression, recs: []Record = nil) -> (f64, R
 	return 0, not_implemented()
 }
 
-expression_get_string :: proc(expr: ^Expression, recs: []Record = nil) -> (string, Result) {
+expression_get_string :: proc(expr: ^Expression, recs: ^Record = nil) -> (string, Result) {
 	return "", not_implemented()
 }
 

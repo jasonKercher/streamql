@@ -5,6 +5,11 @@ import "core:strings"
 import "core:fmt"
 import "core:os"
 
+PIPE_MIN :: 2
+PIPE_MAX :: 1024
+PIPE_DEFAULT :: 16
+PIPE_DEFAULT_THREAD :: 64
+
 Config :: enum u8 {
 	Check,
 	Strict,
@@ -65,6 +70,7 @@ Streamql :: struct {
 	out_delim: string,
 	rec_term: string,
 	curr_scope: i32,
+	pipe_factor: u32,
 	config: bit_set[Config],
 	branch_state: _Branch_State,
 	in_quotes: Quotes,
@@ -80,6 +86,8 @@ construct :: proc(sql: ^Streamql, cfg: bit_set[Config] = {}) {
 		scopes = make([dynamic]Scope),
 		config = cfg,
 	}
+
+	sql.pipe_factor = .Thread in sql.config ? PIPE_DEFAULT_THREAD : PIPE_DEFAULT
 
 	/* scopes[0] == global scope */
 	append(&sql.scopes, make_scope())

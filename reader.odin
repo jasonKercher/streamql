@@ -40,6 +40,10 @@ make_reader :: proc() -> Reader {
 	}
 }
 
+reader_reopen :: proc(reader: ^Reader) -> Result {
+	return not_implemented()
+}
+
 reader_assign :: proc(sql: ^Streamql, src: ^Source) -> Result {
 	reader := &src.schema.data.(Reader)
 	switch reader.type {

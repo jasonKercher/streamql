@@ -54,7 +54,18 @@ construct_source :: proc {
 }
 
 source_reset :: proc(src: ^Source, has_executed: bool) -> Result {
-	return not_implemented()
+	if .Must_Reopen in src.props {
+		reader := &src.schema.data.(Reader)
+		reader_reopen(reader) or_return
+		reader.reset__(reader) or_return
+		hash_join_reset(src.join_data)
+	} else if has_executed {
+		reader := &src.schema.data.(Reader)
+		//reader_reopen(reader) or_return
+		reader.reset__(reader) or_return
+		hash_join_reset(src.join_data)
+	}
+	return .Ok
 }
 
 source_resolve_schema :: proc(sql: ^Streamql, src: ^Source) -> Result {

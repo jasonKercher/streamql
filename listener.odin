@@ -331,6 +331,10 @@ parse_send_select_stmt :: proc(sql: ^Streamql) -> Result {
 	q := _get_curr_query(sql)
 	q.state.mode = .Select_List
 	q.operation = make_select()
+
+	new_select := &q.operation.(Select)
+	append(&new_select.select_list, new_select)
+	
 	_check_for_else(sql)
 
 	return .Ok

@@ -1,7 +1,6 @@
 //+private
 package streamql
 
-import "util"
 import "core:c"
 import "core:os"
 import "core:fmt"

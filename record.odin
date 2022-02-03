@@ -12,6 +12,8 @@ Record :: struct {
 	fields: []string,
 	offset: i64,
 	idx: i64,
+	next: ^Record,
+	root_fifo_idx: i32,
 }
 
 destroy_record :: proc(rec: ^Record) {

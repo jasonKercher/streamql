@@ -788,7 +788,7 @@ lex_check :: proc(t: ^testing.T) {
 	 * with .Query_Begin and .Query_End
 	 */
 
-	//         01      2   3    4   5    6   7  890 1
+	//      01      2   3    4   5    6   7  890 1
 	p.text = "select col from foo join foo on 1=1"
 	testing.expect_value(t, lex_lex(&p), Result.Ok)
 	testing.expect_value(t, len(p.tokens), 12)

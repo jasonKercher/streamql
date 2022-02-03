@@ -12,6 +12,7 @@ import "util"
 
 Schema_Props :: enum {
 	Is_Var,
+	Is_Const,
 	Is_Default,
 	Is_Preresolved,
 	Delim_Set,
@@ -143,7 +144,7 @@ schema_set_rec_term :: proc(s: ^Schema, rec_term: string) {
 schema_assign_header :: proc(src: ^Source, rec: ^Record, src_idx: int) {
 	schema := &src.schema
 	fr_rec := rec.data.(fastrecs.Record)
-	for f, i in fr_rec.fields {
+	for f in fr_rec.fields {
 		new_item := Schema_Item {
 			name = strings.clone(f),
 			loc = i32(len(src.schema.layout)),
@@ -762,6 +763,10 @@ _resolve_query :: proc(sql: ^Streamql, q: ^Query, union_io: Io = nil) -> Result 
 		return .Error
 	}
 	path, err := os.absolute_path_from_relative(q.into_table_name)
+	if err == 0 {
+		fmt.eprintln("failed to get absolute path")
+		return .Error
+	}
 
 	sql.schema_map[path] = op_schema
 

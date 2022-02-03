@@ -78,7 +78,7 @@ _scalar_ops : [OPERATOR_COUNT][FIELD_TYPE_COUNT] Function_Call = {
         {sql_op_unary_plus_i,  sql_op_unary_plus_f,  nil},
 }
 
-Function_Call :: proc(fn: ^Expr_Function, data: ^Data, recs: []Record) -> Result
+Function_Call :: proc(fn: ^Expr_Function, data: ^Data, recs: ^Record) -> Result
 
 Expr_Function :: struct {
 	call__: Function_Call,

@@ -239,7 +239,7 @@ _expand_asterisk :: proc(exprs: ^[dynamic]Expression, src: ^Source, idx: ^int) {
 
 	r := &src.schema.data.(Reader)
 	r.max_field_idx = i32(len(src.schema.layout) - 1)
-	for item, i in src.schema.layout {
+	for item in src.schema.layout {
 		new_expr := make_expression(item.name, "")
 		expr_col := &new_expr.data.(Expr_Column_Name)
 		expr_col.item.loc = item.loc
