@@ -5,7 +5,6 @@ import "core:fmt"
 
 Update :: struct {
 	schema: Schema,
-	writer: Writer,
 	columns: [dynamic]Expression,
 	values: [dynamic]Expression,
 	top_count: i64,

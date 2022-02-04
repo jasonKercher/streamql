@@ -49,3 +49,15 @@ data_to_float :: proc(data: ^Data, type: Data_Type) -> (f64, Result) {
 	}
 	unreachable()
 }
+
+data_to_string :: proc(data: ^Data, type: Data_Type) -> (string, Result) {
+	switch type {
+	case .Int:
+		return "", not_implemented()
+	case .Float:
+		return "", not_implemented()
+	case .String:
+		return data.(string), .Ok
+	}
+	unreachable()
+}

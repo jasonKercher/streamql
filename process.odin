@@ -1,6 +1,7 @@
 //+private
 package streamql
 
+import "core:math/bits"
 import "core:strings"
 import "bigraph"
 import "fifo"
@@ -29,19 +30,6 @@ Process_Data :: union {
 	^Select,
 }
 
-Process_Result :: enum u8 {
-	Ok,
-	Error,
-	Complete,
-	Running,
-	Wait_On_In0,
-	Wait_On_In1,
-	Wait_On_In_Either,
-	Wait_On_In_Both,
-	Wait_On_Out0,
-	Wait_On_Out1,
-}
-
 Process_Call :: proc(process: ^Process) -> Process_Result
 
 Process_Unions :: struct #raw_union {
@@ -52,6 +40,7 @@ Process_Unions :: struct #raw_union {
 Process :: struct {
 	data: Process_Data,
 	action__: Process_Call,
+	root_fifo_ref: ^[]fifo.Fifo(^Record),
 	wait_list: []^Process,
 	input: [2]^fifo.Fifo(^Record),
 	output: [2]^fifo.Fifo(^Record),
@@ -61,6 +50,7 @@ Process :: struct {
 	rows_affected: int,
 	_in_buf: []^Record,
 	_in_buf_iedx: u32,
+	max_iters: u16,
 	state: bit_set[Process_State],
 	plan_id: u8,
 	in_src_count: u8,
@@ -71,7 +61,8 @@ make_process :: proc(plan: ^Plan, msg: string) -> Process {
 	if plan == nil {
 		return Process {
 			msg = strings.clone(msg),
-			state = {.Is_Enabled},
+			state = {.Is_Enabled, .Wait_In0},
+			max_iters = bits.U16_MAX,
 		}
 	}
 	return Process {
@@ -79,6 +70,8 @@ make_process :: proc(plan: ^Plan, msg: string) -> Process {
 		plan_id = plan.id,
 		in_src_count = plan.src_count,
 		out_src_count = plan.src_count,
+		state = {.Is_Enabled, .Wait_In0},
+		max_iters = bits.U16_MAX,
 	}
 }
 

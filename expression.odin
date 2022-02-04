@@ -252,6 +252,10 @@ expression_get_float :: proc(expr: ^Expression, recs: ^Record = nil) -> (f64, Re
 }
 
 expression_get_string :: proc(expr: ^Expression, recs: ^Record = nil) -> (string, Result) {
+	#partial switch v in &expr.data {
+	case Expr_Constant:
+		return data_to_string((^Data)(&v), expr.data_type)
+	}
 	return "", not_implemented()
 }
 

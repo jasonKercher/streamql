@@ -2,7 +2,6 @@
 package streamql
 
 Delete :: struct {
-	writer: Writer,
 	schema: Schema,
 	top_count: i64,
 	src_idx: i32,

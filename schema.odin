@@ -16,6 +16,7 @@ Schema_Props :: enum {
 	Is_Default,
 	Is_Preresolved,
 	Delim_Set,
+	Must_Run_Once,
 }
 
 Schema_Item :: struct {
@@ -44,7 +45,7 @@ Schema :: struct {
 
 make_schema :: proc() -> Schema {
 	return Schema {
-		props = {.Is_Default},
+		props = {.Is_Default, .Must_Run_Once},
 	}
 }
 

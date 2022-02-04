@@ -3,12 +3,11 @@ package streamql
 
 import "core:strings"
 
-Select_Call :: proc(sel: ^Select, recs: []Record) -> Result
+Select_Call :: proc(sel: ^Select, recs: ^Record) -> Process_Result
 
 Select :: struct {
 	select__: Select_Call,
 	schema: Schema,
-	writer: Writer,
 	expressions: [dynamic]Expression,
 	select_list: [dynamic]^Select,
 	const_dest: ^Expression,
@@ -21,6 +20,7 @@ Select :: struct {
 
 make_select :: proc() -> Select {
 	return Select {
+		select__ = _select,
 		expressions = make([dynamic]Expression),
 		select_list = make([dynamic]^Select),
 		select_idx = -1,
@@ -103,20 +103,68 @@ select_apply_process :: proc(q: ^Query, is_subquery: bool) {
 
 	process = &q.plan.op_false.data
 	process.state += {.Is_Passive}
-	if sel.writer.type != nil {
-		writer_set_delim(&sel.writer, sel.schema.delim)
-		writer_set_rec_term(&sel.writer, sel.schema.rec_term)
+	writer := &sel.schema.data.(Writer)
+	if writer.type != nil {
+		writer_set_delim(writer, sel.schema.delim)
+		writer_set_rec_term(writer, sel.schema.rec_term)
 	}
 }
 
-_select_to_const :: proc(sel: ^Select, recs: []Record) -> Result {
-	return not_implemented()
+select_next_union :: proc(sel: ^Select) -> bool {
+	not_implemented()
+	return false
 }
 
-_select_order_api:: proc(sel: ^Select, recs: []Record) -> Result {
-	return not_implemented()
+select_verify_must_run :: proc(sel: ^Select) {
+	if .Must_Run_Once in sel.schema.props {
+		sel.schema.props -= {.Must_Run_Once}
+		for expr in sel.expressions {
+			if _, is_agg := expr.data.(Expr_Aggregate); is_agg {
+				sel.schema.props += {.Must_Run_Once}
+				break
+			}
+		}
+	}
 }
 
-_select_subquery :: proc(sel: ^Select, recs: []Record) -> Result {
-	return not_implemented()
+_select :: proc(sel: ^Select, recs: ^Record) -> Process_Result {
+	sel.row_num += 1
+	w := &sel.schema.data.(Writer)
+
+	n := w.write_record__(w, sel.expressions[:], recs) or_return
+
+	if recs == nil {
+		return .Ok
+	}
+
+	recs.offset = sel.offset
+	sel.offset += i64(n)
+	recs.select_len = i32(n)
+
+	return .Ok
+}
+
+_select_api :: proc(sel: ^Select, recs: ^Record) -> Process_Result {
+	not_implemented()
+	return .Error
+}
+
+_select_order_api:: proc(sel: ^Select, recs: ^Record) -> Process_Result {
+	not_implemented()
+	return .Error
+}
+
+_select_to_const :: proc(sel: ^Select, recs: ^Record) -> Process_Result {
+	not_implemented()
+	return .Error
+}
+
+_select_to_list :: proc(sel: ^Select, recs: ^Record) -> Process_Result {
+	not_implemented()
+	return .Error
+}
+
+_select_subquery :: proc(sel: ^Select, recs: ^Record) -> Process_Result {
+	not_implemented()
+	return .Error
 }

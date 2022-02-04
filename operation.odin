@@ -31,11 +31,11 @@ op_get_writer :: proc(gen: ^Operation) -> ^Writer {
 	gen := gen
 	switch op in gen {
 	case Select:
-		return &op.writer
+		return &op.schema.data.(Writer)
 	case Update:
-		return &op.writer
+		return &op.schema.data.(Writer)
 	case Delete:
-		return &op.writer
+		return &op.schema.data.(Writer)
 	case Branch:
 		return nil
 	case Set:
@@ -104,7 +104,7 @@ op_writer_init :: proc(sql: ^Streamql, q: ^Query) -> Result {
 				group_add_expression(q.distinct_, &new_expr)
 			}
 		}
-		//select_verify_must_run(&op)
+		select_verify_must_run(&op)
 	case Update:
 		return not_implemented()
 	}
@@ -133,11 +133,11 @@ op_set_writer :: proc(gen: ^Operation, w: ^Writer) {
 	gen := gen
 	#partial switch op in gen {
 	case Select:
-		op.writer = w^
+		op.schema.data = w^
 	case Update:
-		op.writer = w^
+		op.schema.data = w^
 	case Delete:
-		op.writer = w^
+		op.schema.data = w^
 	}
 }
 

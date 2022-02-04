@@ -59,6 +59,9 @@ stdin_to_string :: proc() -> string
 		append(&b.buf, c)
 	}
 
+	bufio.reader_destroy(&buffered_input)
+	io.destroy(stdin_reader)
+
 	return strings.to_string(b)
 }
 
