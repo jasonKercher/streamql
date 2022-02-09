@@ -1,23 +1,17 @@
 //+private
 package streamql
 
-import "core:fmt"
+//import "core:fmt"
 import "fifo"
 
-Process_Result :: enum {
-	Ok,
-	Error,
-	Complete,
-	Running,
-	Waiting_In0,
-	Waiting_In1,
-	Waiting_In_Either,
-	Waiting_In_Both,
-	Waiting_Out0,
-	Waiting_Out1,
+sqlprocess_recycle_buffer :: proc(_p: ^Process, buf: []^Record, buf_idx: ^u32) {
+	for ; buf_idx^ < u32(len(buf)); buf_idx^ += 1 {
+		sqlprocess_recycle_rec(_p, buf[buf_idx^])
+	}
+	buf_idx^ = 0
 }
 
-sqlprocess_recycle :: proc(_p: ^Process, recs: ^Record) {
+sqlprocess_recycle_rec :: proc(_p: ^Process, recs: ^Record) {
 	recs := recs
 	for recs != nil {
 		root_fifo := &_p.root_fifo_ref[recs.root_fifo_idx]
@@ -42,37 +36,77 @@ sqlprocess_recycle :: proc(_p: ^Process, recs: ^Record) {
 	}
 }
 
-sql_read :: proc(_p: ^Process) -> Process_Result {
-	not_implemented()
-	return .Error
+sqlprocess_recycle :: proc{sqlprocess_recycle_buffer, sqlprocess_recycle_rec}
+
+sql_read :: proc(_p: ^Process) -> Result {
+	out := _p.output[0]
+	in_ := _p.input[0]
+
+	if !out.is_open {
+		return .Complete
+	}
+
+	if fifo.is_empty(in_) {
+		if !in_.is_open {
+			return .Complete
+		}
+		return ._Waiting_In0
+	}
+
+	if fifo.receivable(out) == 0 {
+		return ._Waiting_Out0
+	}
+
+	src := _p.data.(^Source)
+	reader := &src.schema.data.(Reader)
+
+	////
+
+	res : Result = .Root_Fifo0 in _p.state ? .Running : ._Waiting_In0
+	for recs := fifo.begin(in_); recs != fifo.end(in_); {
+		#partial switch reader.get_record__(reader, recs) {
+		case .Eof:
+			return .Complete
+		case .Error:
+			return .Error
+		}
+
+		recs.src_idx = src.idx
+		fifo.add(out, recs)
+
+		recs = fifo.iter(in_)
+
+		if fifo.receivable(out) == 0 {
+			res = ._Waiting_Out0
+			break
+		}
+	}
+	fifo.update(in_)
+
+	return res
 }
 
-sql_cartesian_join :: proc(_p: ^Process) -> Process_Result {
-	not_implemented()
-	return .Error
+sql_cartesian_join :: proc(_p: ^Process) -> Result {
+	return not_implemented()
 }
 
-sql_hash_join :: proc(_p: ^Process) -> Process_Result {
-	not_implemented()
-	return .Error
+sql_hash_join :: proc(_p: ^Process) -> Result {
+	return not_implemented()
 }
 
-sql_left_join_logic :: proc(_p: ^Process) -> Process_Result {
-	not_implemented()
-	return .Error
+sql_left_join_logic :: proc(_p: ^Process) -> Result {
+	return not_implemented()
 }
 
-sql_logic :: proc(_p: ^Process) -> Process_Result {
-	not_implemented()
-	return .Error
+sql_logic :: proc(_p: ^Process) -> Result {
+	return not_implemented()
 }
 
-sql_groupby :: proc(_p: ^Process) -> Process_Result {
-	not_implemented()
-	return .Error
+sql_groupby :: proc(_p: ^Process) -> Result {
+	return not_implemented()
 }
 
-sql_select :: proc(_p: ^Process) -> Process_Result {
+sql_select :: proc(_p: ^Process) -> Result {
 	main_select := _p.data.(^Select)
 	current_select := main_select.select_list[main_select.select_idx]
 
@@ -107,31 +141,27 @@ sql_select :: proc(_p: ^Process) -> Process_Result {
 			fifo.set_open(in_, false)
 			/* QUEUED RESULTS */
 			//return .Running
-			not_implemented()
-			return .Error
+			return not_implemented()
 		}
 
-		if writer_close(&main_select.schema.data.(Writer)) == .Error {
-			return .Error
-		}
-
+		writer_close(&main_select.schema.data.(Writer)) or_return
 		return .Complete
 	}
 
 	if fifo.is_empty(in_) {
 		if .Wait_In0 in _p.state && in_.is_open {
-			return .Waiting_In0
+			return ._Waiting_In0
 		}
 		_p.state -= {.Wait_In0}
 	}
 
 	if out != nil && fifo.receivable(out) == 0 {
-		return .Waiting_Out0
+		return ._Waiting_Out0
 	}
 
 	////
 
-	res := Process_Result.Waiting_In0
+	res := Result._Waiting_In0
 
 	/* TODO: DELETE ME */
 
@@ -150,7 +180,7 @@ sql_select :: proc(_p: ^Process) -> Process_Result {
 
 		if out != nil {
 			fifo.add(out, recs)
-		} else if .Is_Const in current_select.schema.props {
+		} else if .Is_Const not_in current_select.schema.props {
 			sqlprocess_recycle(_p, recs)
 		}
 
@@ -163,7 +193,7 @@ sql_select :: proc(_p: ^Process) -> Process_Result {
 		recs = fifo.iter(in_)
 
 		if out != nil && fifo.receivable(out) == 0 {
-			res = .Waiting_Out0
+			res = ._Waiting_Out0
 			break
 		}
 	}

@@ -2,6 +2,7 @@
 package streamql
 
 import "core:strings"
+import "core:fmt"
 import "fastrecs"
 
 Source_Props :: enum {
@@ -30,22 +31,36 @@ Source :: struct {
 	joinable_logic: []^Logic,
 	join_data: ^Hash_Join,
 	join_logic: ^Logic_Group,
+	idx: i8,
 	join_type: Join_Type,
-	props: bit_set[Source_Props],
+	props: bit_set[Source_Props; u8],
 }
 
-construct_source_name :: proc(src: ^Source, name: string) {
+construct_source_name :: proc(src: ^Source, idx: int, name: string) -> Result {
+	if idx > int(max(type_of(src.idx))) {
+		fmt.eprintf("max sources exceeded (%d)\n", max(type_of(src.idx)))
+		return .Error
+	}
 	src^ = {
 		data = strings.clone(name),
 		schema = make_schema(),
+		idx = i8(idx),
 	}
+
+	return .Ok
 }
 
-construct_source_subquery :: proc(src: ^Source, subquery: ^Query) {
+construct_source_subquery :: proc(src: ^Source, idx: int, subquery: ^Query) -> Result {
+	if idx > int(max(i8)) {
+		fmt.eprintf("max sources exceeded (%d)\n", max(i8))
+		return .Error
+	}
 	src^ = {
 		data = subquery,
 		schema = make_schema(),
+		idx = i8(idx),
 	}
+	return .Ok
 }
 
 construct_source :: proc {

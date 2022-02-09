@@ -292,11 +292,7 @@ parse_enter_function :: proc(sql: ^Streamql, tok: ^Token) -> Result {
 	}
 
 	fn_expr := make_expression(make_function(fn_type))
-	expr_ptr, ret := query_distribute_expression(_get_curr_query(sql), &fn_expr)
-	if ret == .Error {
-		return .Error
-	}
-
+	expr_ptr := query_distribute_expression(_get_curr_query(sql), &fn_expr) or_return
 	q := _get_curr_query(sql)
 
 	append(&q.state.f_stack, expr_ptr)

@@ -5,7 +5,6 @@ import "util"
 import "core:os"
 import "core:fmt"
 import "core:strings"
-import "core:math/bits"
 
 Operation :: union {
 	Set,
@@ -52,7 +51,7 @@ new_query :: proc(sub_id: i16, query_text: string = "") -> ^Query {
 	q := new(Query)
 	q^ = {
 		preview_text = query_text,
-		top_count = bits.I64_MAX,
+		top_count = max(type_of(q.top_count)),
 		into_table_var = -1,
 		sub_id = sub_id,
 	}
@@ -149,13 +148,13 @@ _exec_one_pass :: proc(exec_vector: []Process) -> (rows_affected: int, res: Resu
 }
 
 query_add_source :: proc(sql: ^Streamql, q: ^Query, table_name, schema_name: string) -> Result {
-	idx := i32(len(q.sources))
+	idx := len(q.sources)
 	append_nothing(&q.sources)
 	src := &q.sources[idx]
-	construct_source(src, table_name)
+	construct_source(src, idx, table_name)
 
 	if table_name[0] == '@' {
-		append(&q.var_sources, idx)
+		append(&q.var_sources, i32(idx))
 		src.props += {.Must_Reopen}
 	}
 
@@ -178,9 +177,10 @@ query_add_source :: proc(sql: ^Streamql, q: ^Query, table_name, schema_name: str
 }
 
 query_add_subquery_source :: proc(q: ^Query, subquery: ^Query) -> Result {
+	idx := len(q.sources)
 	append_nothing(&q.sources)
 	src := &q.sources[len(q.sources) - 1]
-	construct_source(src, subquery)
+	construct_source(src, idx, subquery)
 	return .Ok
 }
 

@@ -88,6 +88,7 @@ _preempt :: proc(p: ^Plan) {
 	buf_idx := -1
 	for rec, i in &p._root_data {
 		rec.next = nil
+		rec.ref_count = 1
 		rec.root_fifo_idx = u8(i % len(p.root_fifos))
 		if rec.root_fifo_idx == 0 {
 			buf_idx += 1
@@ -546,6 +547,9 @@ _activate_procs :: proc(sql: ^Streamql, q: ^Query) {
 
 	for node in &q.plan.proc_graph.nodes {
 		node.data.root_fifo_ref = &q.plan.root_fifos
+		if sql.verbosity == .Debug {
+			node.data.state += {.Is_Debug}
+		}
 	}
 
 	if sql.verbosity == .Debug {

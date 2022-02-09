@@ -43,10 +43,17 @@ Quotes :: enum u8 {
 
 Result :: enum u8 {
 	Ok,
-	Running,
 	Error,
+	Running,
+	Complete,
 	Eof,
 	Null, // refering to NULL in SQL
+	_Waiting_In0,
+	_Waiting_In1,
+	_Waiting_In_Either,
+	_Waiting_In_Both,
+	_Waiting_Out0,
+	_Waiting_Out1,
 }
 
 @private

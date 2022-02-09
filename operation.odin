@@ -235,7 +235,7 @@ op_expand_asterisks :: proc(q: ^Query, force: bool) {
 @(private = "file")
 _expand_asterisk :: proc(exprs: ^[dynamic]Expression, src: ^Source, idx: ^int) {
 	aster_idx := idx^
-	src_idx := i32(exprs[idx^].data.(Expr_Asterisk))
+	src_idx := i8(exprs[idx^].data.(Expr_Asterisk))
 
 	r := &src.schema.data.(Reader)
 	r.max_field_idx = i32(len(src.schema.layout) - 1)
@@ -248,7 +248,7 @@ _expand_asterisk :: proc(exprs: ^[dynamic]Expression, src: ^Source, idx: ^int) {
 		expr_col.src_idx = src_idx
 
 		if _, is_subq := src.data.(^Query); is_subq {
-			new_expr.subq_idx = u16(src_idx)
+			new_expr.subq_idx = src_idx
 		}
 
 		idx^ += 1

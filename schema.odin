@@ -2,7 +2,6 @@
 package streamql
 
 import "core:path/filepath"
-import "core:math/bits"
 import "core:strings"
 import "core:fmt"
 import "fastrecs"
@@ -220,7 +219,12 @@ _evaluate_if_const :: proc(expr: ^Expression) -> Result {
 	expr.fn_bak^ = fn^
 
 	new_data: Data
-	fn.call__(fn, &new_data, nil) or_return
+	if expr.data_type == .String {
+		sb := strings.make_builder()
+		fn.call__(fn, &new_data, nil, &sb) or_return
+	} else {
+		fn.call__(fn, &new_data) or_return
+	}
 	expr.data = Expr_Constant(new_data)
 
 	return .Ok
@@ -411,7 +415,7 @@ _resolve_source :: proc(sql: ^Streamql, q: ^Query, src: ^Source, src_idx: int) -
 		/* TODO: case_insensitive */
 		if src.schema.name != "default" {
 			src.schema.props -= {.Is_Default}
-			r.skip_rows = 0
+			//r.skip_rows = 0
 			_load_schema_by_name(sql, src, src_idx) or_return
 		}
 	}
@@ -428,6 +432,7 @@ _resolve_source :: proc(sql: ^Streamql, q: ^Query, src: ^Source, src_idx: int) -
 		_resolve_file(sql, q, src) or_return
 		if .Is_Default in src.schema.props {
 			r.type = .Delimited
+			r.skip_rows = 1
 		}
 	}
 
@@ -443,7 +448,7 @@ _resolve_source :: proc(sql: ^Streamql, q: ^Query, src: ^Source, src_idx: int) -
 
 	rec: Record
 	rec.data = fastrecs.Record{}
-	r.max_field_idx = bits.I32_MAX
+	r.max_field_idx = max(type_of(r.max_field_idx))
 	r.get_record__(r, &rec)
 	r.max_field_idx = 0
 

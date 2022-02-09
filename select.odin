@@ -3,7 +3,7 @@ package streamql
 
 import "core:strings"
 
-Select_Call :: proc(sel: ^Select, recs: ^Record) -> Process_Result
+Select_Call :: proc(sel: ^Select, recs: ^Record) -> Result
 
 Select :: struct {
 	select__: Select_Call,
@@ -111,8 +111,8 @@ select_apply_process :: proc(q: ^Query, is_subquery: bool) {
 }
 
 select_next_union :: proc(sel: ^Select) -> bool {
-	not_implemented()
-	return false
+	sel.select_idx += 1
+	return int(sel.select_idx) < len(sel.select_list)
 }
 
 select_verify_must_run :: proc(sel: ^Select) {
@@ -127,7 +127,7 @@ select_verify_must_run :: proc(sel: ^Select) {
 	}
 }
 
-_select :: proc(sel: ^Select, recs: ^Record) -> Process_Result {
+_select :: proc(sel: ^Select, recs: ^Record) -> Result {
 	sel.row_num += 1
 	w := &sel.schema.data.(Writer)
 
@@ -144,27 +144,27 @@ _select :: proc(sel: ^Select, recs: ^Record) -> Process_Result {
 	return .Ok
 }
 
-_select_api :: proc(sel: ^Select, recs: ^Record) -> Process_Result {
+_select_api :: proc(sel: ^Select, recs: ^Record) -> Result {
 	not_implemented()
 	return .Error
 }
 
-_select_order_api:: proc(sel: ^Select, recs: ^Record) -> Process_Result {
+_select_order_api:: proc(sel: ^Select, recs: ^Record) -> Result {
 	not_implemented()
 	return .Error
 }
 
-_select_to_const :: proc(sel: ^Select, recs: ^Record) -> Process_Result {
+_select_to_const :: proc(sel: ^Select, recs: ^Record) -> Result {
 	not_implemented()
 	return .Error
 }
 
-_select_to_list :: proc(sel: ^Select, recs: ^Record) -> Process_Result {
+_select_to_list :: proc(sel: ^Select, recs: ^Record) -> Result {
 	not_implemented()
 	return .Error
 }
 
-_select_subquery :: proc(sel: ^Select, recs: ^Record) -> Process_Result {
+_select_subquery :: proc(sel: ^Select, recs: ^Record) -> Result {
 	not_implemented()
 	return .Error
 }

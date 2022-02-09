@@ -529,6 +529,9 @@ _get_numeric :: proc(p: ^Parser, group: int, idx: ^u32) -> Result {
 	/* TODO hex check here ? */
 
 	begin := idx^
+	if p.text[begin] == '-' {
+		idx^ += 1
+	}
 	is_float: bool
 
 	for ; idx^ < u32(len(p.text)) &&
@@ -686,7 +689,7 @@ _lex_tokenize :: proc(p: ^Parser) -> Result {
 		case p.text[i] == '[':
 			_get_qualified_name(p, group, &i) or_return
 		case unicode.is_digit(rune(p.text[i])) ||
-		    (i+1 < u32(len(p.text)) && unicode.is_digit(rune(p.text[i]))):
+		    (p.text[i] == '-' && i+1 < u32(len(p.text)) && unicode.is_digit(rune(p.text[i+1]))):
 			_get_numeric(p, group, &i) or_return
 		case p.text[i] == '@':
 			_get_variable(p, group, &i)

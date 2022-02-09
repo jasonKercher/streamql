@@ -15,7 +15,7 @@ foreign libc {
 	@(link_name="mkstemp") _libc_mkstemp :: proc(template: cstring) -> c.int ---
 }
 
-Write_Record_Call :: proc(w: ^Writer, exprs: []Expression, recs: ^Record, bufw: ^bufio.Writer = nil) -> (int, Process_Result)
+Write_Record_Call :: proc(w: ^Writer, exprs: []Expression, recs: ^Record, bufw: ^bufio.Writer = nil) -> (int, Result)
 
 Writer_Data :: union {
 	Delimited_Writer,
@@ -49,6 +49,8 @@ make_writer :: proc(sql: ^Streamql, write_io: Io) -> Writer {
 	case .Subquery:
 		new_writer.data = make_subquery_writer()
 	}
+
+	_init_bufio(&new_writer)
 
 	return new_writer
 }
@@ -151,13 +153,19 @@ _make_temp_file :: proc(w: ^Writer) -> Result {
 	}
 
 	w.temp_node = linkedlist.push(&_global_remove_list, temp_name)
+
+	return _init_bufio(w)
+}
+
+@(private = "file")
+_init_bufio :: proc(w: ^Writer) -> Result {
+	bufio.writer_destroy(&w.writer)
 	io_writer, ok := io.to_writer(os.stream_from_handle(w.fd))
 	if !ok {
 		fmt.eprintln("to_writer fail")
 		return .Error
 	}
 	bufio.writer_init(&w.writer, io_writer)
-
 	return .Ok
 }
 
@@ -186,7 +194,7 @@ make_delimited_writer :: proc() -> Delimited_Writer {
 	}
 }
 
-_delimited_write_record :: proc(w: ^Writer, exprs: []Expression, recs: ^Record, bufw: ^bufio.Writer = nil) -> (int, Process_Result) {
+_delimited_write_record :: proc(w: ^Writer, exprs: []Expression, recs: ^Record, bufw: ^bufio.Writer = nil) -> (int, Result) {
 	bufw := bufw
 	exprs := exprs
 	if bufw == nil {
@@ -204,8 +212,8 @@ _delimited_write_record :: proc(w: ^Writer, exprs: []Expression, recs: ^Record, 
 		}
 
 		if aster, is_aster := expr.data.(Expr_Asterisk); is_aster {
-			src_idx := i32(aster)
-			rec := record_get(recs, u8(src_idx))
+			src_idx := i8(aster)
+			rec := record_get(recs, src_idx)
 			full_rec := record_get_line(rec)
 			n, _ = bufio.writer_write_string(bufw, full_rec)
 			written_len += n

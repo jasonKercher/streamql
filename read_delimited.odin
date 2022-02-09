@@ -36,7 +36,12 @@ delimited_reset_stdin :: proc(r: ^Reader) -> Result {
 delimited_get_record :: proc(r: ^Reader, rec: ^Record) -> Result {
 	rec := rec
 	fr_reader := &r.data.(fastrecs.Reader)
-	fr_record := &rec.data.(fastrecs.Record)
+
+	fr_record, is_set := &rec.data.(fastrecs.Record)
+	if !is_set {
+		rec.data = fastrecs.Record{}
+		fr_record = &rec.data.(fastrecs.Record)
+	}
 
 	if .Eof in r.status {
 		return .Eof

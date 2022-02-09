@@ -2,6 +2,7 @@
 package streamql
 
 import "core:reflect"
+import "core:strings"
 import "core:fmt"
 
 OPERATOR_COUNT :: 11
@@ -78,7 +79,7 @@ _scalar_ops : [OPERATOR_COUNT][FIELD_TYPE_COUNT] Function_Call = {
         {sql_op_unary_plus_i,  sql_op_unary_plus_f,  nil},
 }
 
-Function_Call :: proc(fn: ^Expr_Function, data: ^Data, recs: ^Record) -> Result
+Function_Call :: proc(fn: ^Expr_Function, data: ^Data, recs: ^Record = nil, sb: ^strings.Builder = nil) -> Result
 
 Expr_Function :: struct {
 	call__: Function_Call,

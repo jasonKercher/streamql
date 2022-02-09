@@ -5,7 +5,6 @@ import "bytemap"
 
 import "core:fmt"
 import "core:strings"
-import "core:math/bits"
 import "core:container/bit_array"
 import "core:testing"
 
@@ -357,20 +356,20 @@ _parse_expression :: proc(sql: ^Streamql, begin, end: u32, group: u16) -> Result
 		_get_prev_token_from_here(p, &end)
 	}
 
-	if p.tokens[begin].type == .Sym_Lparen &&
-	    p.tokens[_peek_next_token(p, begin)].type == .Select {
+	if next := _peek_next_token(p, begin); _token_in_current_expr(p, next, group) && 
+	    p.tokens[begin].type == .Sym_Lparen &&
+	    p.tokens[next].type == .Select {
 		parse_enter_subquery_const(sql)
 
 		curr_bak := p.curr
 		p.curr = begin
 
 		_get_next_token(p)
-
-		ret := _parse_select_stmt(sql)
+		_parse_select_stmt(sql) or_return
 
 		p.curr = curr_bak
 		parse_leave_subquery_const(sql)
-		return ret
+		return .Ok
 	}
 
 	/* Leaf node?? */
@@ -472,7 +471,7 @@ _parse_expression :: proc(sql: ^Streamql, begin, end: u32, group: u16) -> Result
 @(private="file")
 _parse_expression_runner :: proc(sql: ^Streamql, begin, end: u32) -> Result {
 	p := &sql.parser
-	min_group: u16 = bits.U16_MAX
+	min_group: u16 = max(u16)
 	max_group: u16 = 0
 
 	for i := begin; i < end; i += 1 {
@@ -854,7 +853,7 @@ _parse_boolean_expression :: proc(sql: ^Streamql, begin, end: u32, group: u16) -
 @(private="file")
 _parse_boolean_expression_runner :: proc(sql: ^Streamql, begin, end: u32) -> Result {
 	p := &sql.parser
-	min_group: u16 = bits.U16_MAX
+	min_group: u16 = max(u16)
 	max_group: u16 = 0
 
 	for i := begin; i < end; i += 1 {

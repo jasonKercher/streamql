@@ -17,14 +17,14 @@ Record :: struct {
 	select_len: i32,
 	ref_count: i16,
 	root_fifo_idx: u8,
-	src_idx: u8,
+	src_idx: i8,
 }
 
 destroy_record :: proc(rec: ^Record) {
 
 }
 
-record_get :: proc(rec: ^Record, src_idx: u8) -> ^Record {
+record_get :: proc(rec: ^Record, src_idx: i8) -> ^Record {
 	rec := rec
 	for ; rec != nil; rec = rec.next {
 		if rec.src_idx == src_idx {
