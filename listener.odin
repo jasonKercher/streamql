@@ -464,7 +464,7 @@ parse_enter_where :: proc(sql: ^Streamql) -> Result {
 	}
 
 	q := _get_curr_query(sql)
-	q.where_ = new_logic_group(nil)
+	q.where_ = new_logic_group(._Parent)
 	append(&q.state.l_stack, q.where_)
 
 	return .Ok
@@ -475,8 +475,9 @@ parse_leave_where :: proc(sql: ^Streamql) -> Result {
 		fmt.eprintf("LEAVE WHERE\n")
 		return .Ok
 	}
-	q := _get_curr_query(sql)
-	pop(&q.state.l_stack)
+	/* Pop in exit_predicate */
+	//q := _get_curr_query(sql)
+	//pop(&q.state.l_stack)
 	return .Ok
 }
 
@@ -488,7 +489,7 @@ parse_enter_join_logic :: proc(sql: ^Streamql) -> Result {
 
 	q := _get_curr_query(sql)
 	back_src := &q.sources[len(q.sources) - 1]
-	back_src.join_logic = new_logic_group(nil)
+	back_src.join_logic = new_logic_group(._Parent)
 	append(&q.state.l_stack, back_src.join_logic)
 
 	return .Ok
@@ -510,7 +511,7 @@ parse_enter_having :: proc(sql: ^Streamql) -> Result {
 		return .Ok
 	}
 	q := _get_curr_query(sql)
-	q.having = new_logic_group(nil)
+	q.having = new_logic_group(._Parent)
 	append(&q.state.l_stack, q.having)
 
 	return .Ok
@@ -527,27 +528,37 @@ parse_leave_having :: proc(sql: ^Streamql) -> Result {
 }
 
 parse_enter_predicate :: proc(sql: ^Streamql, tok: ^Token, is_not_predicate, is_not: bool) -> Result {
+	logic_op_str := token_to_string(&sql.parser, tok)
+
 	if .Parse_Only in sql.config {
 		if is_not_predicate {
 			if is_not {
-				fmt.eprintf("ENTER PREDICATE NOT %s NOT\n", token_to_string(&sql.parser, tok))
+				fmt.eprintf("ENTER PREDICATE NOT %s NOT\n", logic_op_str)
 			} else {
-				fmt.eprintf("ENTER PREDICATE NOT %s\n", token_to_string(&sql.parser, tok))
+				fmt.eprintf("ENTER PREDICATE NOT %s\n", logic_op_str)
 			}
 		} else {
 			if is_not {
-				fmt.eprintf("ENTER PREDICATE %s NOT\n", token_to_string(&sql.parser, tok))
+				fmt.eprintf("ENTER PREDICATE %s NOT\n", logic_op_str)
 			} else {
-				fmt.eprintf("ENTER PREDICATE %s\n", token_to_string(&sql.parser, tok))
+				fmt.eprintf("ENTER PREDICATE %s\n", logic_op_str)
 			}
 		}
 		return .Ok
 	}
 
+	is_not_predicate := is_not_predicate
+	q := _get_curr_query(sql)
+	q.state.mode = .Logic
+
+	if is_not {
+		is_not_predicate = !is_not_predicate
+	}
+
 	if is_not_predicate {
-		query_new_logic_item(_get_curr_query(sql), .Predicate_Negated)
+		query_new_logic_item(q, .Predicate_Negated, logic_op_str)
 	} else {
-		query_new_logic_item(_get_curr_query(sql), .Predicate)
+		query_new_logic_item(q, .Predicate, logic_op_str)
 	}
 	return .Ok
 }
@@ -575,11 +586,9 @@ parse_leave_predicate :: proc(sql: ^Streamql, tok: ^Token, is_not_predicate, is_
 
 	if is_not {
 		#partial switch lg.condition.comp_type {
-		case .In:
-			lg.condition.comp_type = .Not_In
-		case .Like:
-			lg.condition.comp_type = .Not_Like
+		case .In, .Sub_In, .Like:
 		case:
+			fmt.eprint("unused NOT\n")
 			return .Error
 		}
 	}

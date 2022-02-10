@@ -223,23 +223,23 @@ query_distribute_expression :: proc(q: ^Query, expr: ^Expression) -> (^Expressio
 	return nil, .Error
 }
 
-query_new_logic_item :: proc(q: ^Query, type: Logic_Group_Type) -> ^Logic_Group {
+query_new_logic_item :: proc(q: ^Query, type: Logic_Group_Type, op_str: string = "") -> ^Logic_Group {
 	lg : ^Logic_Group
 	l_stack := &q.state.l_stack
 
 	parent := l_stack[len(l_stack) - 1]
 	if parent.type == nil {
-		lg = parent
-		lg.type = type
+		init_logic_group(parent, type, op_str)
+		return parent
 	} else if parent.items[0] == nil {
-		lg = new_logic_group(type)
-		parent.items[0] = lg
+		parent.items[0] = new_logic_group(type, op_str)
+		return parent.items[0]
 	} else {
-		lg = new_logic_group(type)
-		parent.items[1] = lg
+		parent.items[1] = new_logic_group(type, op_str)
+		return parent.items[1]
 	}
 
-	return lg
+	unreachable()
 }
 
 @(private = "file")
@@ -250,9 +250,10 @@ _add_logic_expression :: proc(q: ^Query, expr: ^Expression) -> (^Expression, Res
 	}
 
 	lg := q.state.l_stack[len(q.state.l_stack) - 1]
-	if lg.condition == nil {
-		lg.condition = new_logic()
-	}
+	/* Allocate in init_logic_group if predicate */
+	//if lg.condition == nil {
+	//	lg.condition = new_logic()
+	//}
 	return logic_add_expression(lg.condition, expr), .Ok
 }
 

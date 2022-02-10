@@ -5,6 +5,8 @@ import "core:strconv"
 import "core:strings"
 import "core:fmt"
 
+DATA_TYPE_COUNT :: 3
+
 Data_Type :: enum {
 	Int,
 	Float,

@@ -334,6 +334,8 @@ _assign_logic_group_expressions :: proc(lg: ^Logic_Group, sources: []Source, str
 	case .Predicate_Negated:
 		_assign_expression(&lg.condition.exprs[0], sources, strict) or_return
 		return _assign_expression(&lg.condition.exprs[1], sources, strict)
+	case ._Parent:
+		return .Error /* should be impossible */
 	}
 
 	return .Ok

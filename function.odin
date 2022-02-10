@@ -6,7 +6,6 @@ import "core:strings"
 import "core:fmt"
 
 OPERATOR_COUNT :: 11
-FIELD_TYPE_COUNT :: 3
 
 Function_Type :: enum {
 	/* Standard Math */
@@ -63,20 +62,6 @@ Function_Type :: enum {
 	Try_Cast,
 	Upper,
 	User_Name,
-}
-
-_scalar_ops : [OPERATOR_COUNT][FIELD_TYPE_COUNT] Function_Call = {
-        {sql_op_plus_i,        sql_op_plus_f,        sql_op_plus_s},
-        {sql_op_minus_i,       sql_op_minus_f,       nil},
-        {sql_op_mult_i,        sql_op_mult_f,        nil},
-        {sql_op_divi_i,        sql_op_divi_f,        nil},
-        {sql_op_mod_i,         nil,                  nil},
-        {sql_op_bit_or,        nil,                  nil},
-        {sql_op_bit_and,       nil,                  nil},
-        {sql_op_bit_xor,       nil,                  nil},
-        {sql_op_bit_not,       nil,                  nil},
-        {sql_op_unary_minus_i, sql_op_unary_minus_f, nil},
-        {sql_op_unary_plus_i,  sql_op_unary_plus_f,  nil},
 }
 
 Function_Call :: proc(fn: ^Expr_Function, data: ^Data, recs: ^Record = nil, sb: ^strings.Builder = nil) -> Result
@@ -170,3 +155,18 @@ function_validate :: proc(fn: ^Expr_Function, expr: ^Expression) -> Result {
 	}
 	return .Error
 }
+
+_scalar_ops : [OPERATOR_COUNT][DATA_TYPE_COUNT] Function_Call = {
+        {sql_op_plus_i,        sql_op_plus_f,        sql_op_plus_s},
+        {sql_op_minus_i,       sql_op_minus_f,       nil},
+        {sql_op_mult_i,        sql_op_mult_f,        nil},
+        {sql_op_divi_i,        sql_op_divi_f,        nil},
+        {sql_op_mod_i,         nil,                  nil},
+        {sql_op_bit_or,        nil,                  nil},
+        {sql_op_bit_and,       nil,                  nil},
+        {sql_op_bit_xor,       nil,                  nil},
+        {sql_op_bit_not,       nil,                  nil},
+        {sql_op_unary_minus_i, sql_op_unary_minus_f, nil},
+        {sql_op_unary_plus_i,  sql_op_unary_plus_f,  nil},
+}
+

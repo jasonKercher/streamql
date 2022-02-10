@@ -172,6 +172,8 @@ _logic_to_process :: proc(p: ^Plan, logic_proc: ^Process, lg: ^Logic_Group, sb: 
 		_check_for_special(p, logic_proc, &lg.condition.exprs[0])
 		_check_for_special(p, logic_proc, &lg.condition.exprs[1])
 		logic_assign_process(lg.condition, logic_proc) or_return
+	case ._Parent:
+		return .Error /* should be impossible */
 	}
 
 	if lg.items[0] != nil {
