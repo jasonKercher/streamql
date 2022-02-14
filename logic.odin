@@ -69,6 +69,43 @@ logic_group_get_condition_count :: proc(lg: ^Logic_Group) -> int {
 	return -1
 }
 
+logic_group_eval :: proc(lg: ^Logic_Group, recs: ^Record, skip: ^Logic) -> (truthy: bool, res: Result) {
+	if lg.type == .Predicate || lg.type == .Predicate_Negated {
+		if lg.condition == skip {
+			return true, .Ok
+		}
+		truthy = lg.condition.logic__(lg.condition, recs) or_return
+		if lg.type == .Predicate_Negated {
+			return !truthy, .Ok
+		}
+		return truthy, .Ok
+	}
+
+	truthy = logic_group_eval(lg.items[0], recs, skip) or_return
+
+	/* Check for short circuit */
+	#partial switch lg.type {
+	case .Or:
+		if truthy {
+			return true, .Ok
+		}
+	case .And:
+		if !truthy {
+			return false, .Ok
+		}
+	case .Not:
+		return !truthy, .Ok
+	}
+
+	return logic_group_eval(lg, recs, skip)
+}
+
+logic_group_must_be_true :: proc(lg: ^Logic_Group, l: ^Logic) -> bool {
+	not_implemented()
+	return false
+}
+
+
 LOGIC_COUNT :: 10
 
 Comparison :: enum {
@@ -131,11 +168,10 @@ logic_add_expression :: proc(l: ^Logic, expr: ^Expression) -> ^Expression {
 	return &l.exprs[1]
 }
 
-logic_assign_process :: proc(l: ^Logic, logic_proc: ^Process) -> Result {
+logic_assign_process :: proc(l: ^Logic, logic_proc: ^Process, sb: ^strings.Builder) -> Result {
 	assert(int(l.comp_type) >= 0)
-	sb := strings.make_builder()
-	expression_cat_description(&l.exprs[0], &sb)
-	strings.write_string(&sb, _comp_strs[l.comp_type])
+	expression_cat_description(&l.exprs[0], sb)
+	strings.write_string(sb, _comp_strs[l.comp_type])
 
 	#partial switch l.comp_type {
 	case .In, .Sub_In:
@@ -147,18 +183,13 @@ logic_assign_process :: proc(l: ^Logic, logic_proc: ^Process) -> Result {
 		l.data_type = .String
 		fallthrough
 	case:
-		expression_cat_description(&l.exprs[1], &sb)
+		expression_cat_description(&l.exprs[1], sb)
 		l.data_type = data_determine_type(l.exprs[0].data_type, l.exprs[1].data_type)
 	}
 
 	l.logic__ = _logic_procs[l.comp_type][l.data_type]
 
 	return .Ok
-}
-
-logic_must_be_true :: proc(lg: ^Logic_Group, l: ^Logic) -> bool {
-	not_implemented()
-	return false
 }
 
 In_Data :: union {

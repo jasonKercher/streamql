@@ -166,12 +166,13 @@ _logic_to_process :: proc(p: ^Plan, logic_proc: ^Process, lg: ^Logic_Group, sb: 
 		strings.write_string(sb, "NOT ")
 		fallthrough
 	case .Predicate:
+		strings.write_byte(sb, '(')
 		if int(lg.condition.comp_type) >= int(Comparison.Sub_In) {
 			_subquery_inlist(p, lg, logic_proc) or_return
 		}
 		_check_for_special(p, logic_proc, &lg.condition.exprs[0])
 		_check_for_special(p, logic_proc, &lg.condition.exprs[1])
-		logic_assign_process(lg.condition, logic_proc) or_return
+		logic_assign_process(lg.condition, logic_proc, sb) or_return
 	case ._Parent:
 		return .Error /* should be impossible */
 	}
@@ -423,7 +424,7 @@ _clear_passive :: proc(p: ^Plan) {
 				break
 			}
 			/* This has to be wrong... but it works... */
-			if n.out[1].out[1] == nil {
+			if n.out[1].out[1] != nil {
 				n.out[1] = n.out[1].out[1]
 			} else {
 				n.out[1] = n.out[1].out[0]
@@ -564,7 +565,7 @@ _make_pipes :: proc(p: ^Plan) {
 	for n in &p.proc_graph.nodes {
 		if n.out[0] != nil {
 			proc0 := n.out[0].data
-			if .Is_Dual_Link in n.out[0].data.state {
+			if .Is_Dual_Link in proc0.state {
 				n.data.output[0] = proc0.input[0]
 				n.data.output[1] = proc0.input[1]
 				continue
@@ -574,7 +575,7 @@ _make_pipes :: proc(p: ^Plan) {
 
 		if n.out[1] != nil {
 			proc1 := n.out[1].data
-			if .Is_Dual_Link in n.out[0].data.state {
+			if .Is_Dual_Link in proc1.state {
 				n.data.output[0] = proc1.input[0]
 				n.data.output[1] = proc1.input[1]
 				continue
@@ -627,9 +628,10 @@ _build :: proc(sql: ^Streamql, q: ^Query, entry: ^bigraph.Node(Process) = nil, i
 	_having(sql, q) or_return
 	_operation(sql, q, entry, is_union) or_return
 
+	// Uncomment to see passive nodes
 	//_print(&q.plan)
-
 	_clear_passive(&q.plan)
+
 	bigraph.set_roots(&q.plan.proc_graph)
 	_union(sql, q) or_return
 	_order(sql, q) or_return

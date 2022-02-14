@@ -526,7 +526,7 @@ _resolve_join_conditions :: proc(right_src: ^Source, right_idx: int) {
 		if side1 == .Mixed || side0 == side1 {
 			continue
 		}
-		if !logic_must_be_true(right_src.join_logic, l) {
+		if !logic_group_must_be_true(right_src.join_logic, l) {
 			continue
 		}
 

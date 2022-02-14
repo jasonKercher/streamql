@@ -99,7 +99,59 @@ sql_left_join_logic :: proc(_p: ^Process) -> Result {
 }
 
 sql_logic :: proc(_p: ^Process) -> Result {
-	return not_implemented()
+	out_true := _p.output[1]
+	out_false := _p.output[0]
+
+	if (out_true != nil && !out_true.is_open) || (out_false != nil && !out_false.is_open) {
+		return .Complete
+	}
+
+	in_ := _p.input[0]
+	if fifo.is_empty(in_) {
+		if !in_.is_open {
+			return .Complete
+		}
+		return ._Waiting_In0
+	}
+
+	if out_true != nil && fifo.receivable(out_true) == 0 {
+		return ._Waiting_In0
+	}
+	if out_false != nil && fifo.receivable(out_false) == 0 {
+		return ._Waiting_In1
+	}
+
+	lg := _p.data.(^Logic_Group)
+
+	res := Result._Waiting_In0
+	for recs := fifo.begin(in_); recs != fifo.end(in_); {
+		truthy := logic_group_eval(lg, recs, lg.join_logic) or_return
+
+		if truthy && out_true != nil {
+			fifo.add(out_true, recs)
+		} else if !truthy && out_false != nil {
+			fifo.add(out_false, recs)
+		} else {
+			sqlprocess_recycle(_p, recs)
+		}
+
+		if .Is_Const in _p.state {
+			res = .Complete
+			break
+		}
+
+		recs = fifo.iter(in_)
+
+		if out_true != nil && fifo.receivable(out_true) == 0 {
+			res = ._Waiting_Out1
+		}
+		if out_false != nil && fifo.receivable(out_false) == 0 {
+			res = ._Waiting_Out0
+		}
+	}
+	fifo.update(in_)
+
+	return res
 }
 
 sql_groupby :: proc(_p: ^Process) -> Result {
