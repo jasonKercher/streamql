@@ -92,15 +92,33 @@ query_prepare :: proc(sql: ^Streamql, q: ^Query) -> Result {
 	return plan_reset(&q.plan)
 }
 
+query_step :: proc(sql: ^Streamql, q: ^Query) -> Result {
+	rows: int
+	res := Result.Running
+
+	for res == .Running && rows == 0 {
+		rows, res = _exec_one_pass(q.plan.execute_vector)
+	}
+
+	q.plan.rows_affected = u64(rows)
+
+	if res == .Complete {
+		q.plan.state += {.Is_Complete}
+	}
+
+	return res
+}
+
 query_exec :: proc(sql: ^Streamql, q: ^Query) -> Result {
 	res := Result.Running
-	//org_rows_affected := q.plan.rows_affected
 	rows: int
 
 	for res == .Running {
 		rows, res = _exec_one_pass(q.plan.execute_vector)
-		q.plan.rows_affected += u64(rows)
+		q.plan.rows_affected = u64(rows)
 	}
+
+	q.plan.state += {.Is_Complete}
 
 	return res
 }
@@ -119,14 +137,12 @@ _exec_one_pass :: proc(exec_vector: []Process) -> (rows_affected: int, res: Resu
 			continue
 		}
 
-		// TODO: this is flawed...
-		if len(process.wait_list) != 0 {
-			if _check_wait_list(process.wait_list) {
-				res = .Running
-				continue
-			}
+		if _check_wait_list(process.wait_list) {
+			res = .Running
+			continue
 		}
 
+		org_rows := process.rows_affected
 
 		#partial switch process.action__(&process) {
 		case .Complete:
@@ -136,10 +152,8 @@ _exec_one_pass :: proc(exec_vector: []Process) -> (rows_affected: int, res: Resu
 		case:
 			res = .Running
 		}
-		//if .Wait_On_In0 in process.state {
-		//	res = .Running
-		//}
-		if .Is_Op_True in process.state {
+		
+		if .Is_Op_True in process.state && org_rows != process.rows_affected {
 			rows_affected = process.rows_affected
 		}
 	}
@@ -259,6 +273,9 @@ _add_logic_expression :: proc(q: ^Query, expr: ^Expression) -> (^Expression, Res
 
 @(private = "file")
 _check_wait_list :: proc(wait_list: []^Process) -> bool {
+	if len(wait_list) == 0 {
+		return false
+	}
 	not_implemented()
 	return false
 }

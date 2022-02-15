@@ -1,5 +1,6 @@
 package streamql
 
+import "core:fmt"
 import "core:os"
 import "getargs"
 import "util"
@@ -9,7 +10,10 @@ main :: proc()
 	query_str : string
 
 	a := getargs.make_getargs()
+	defer getargs.destroy(&a)
+
 	getargs.add_arg(&a, "", "help", .None)
+	getargs.add_arg(&a, "", "api", .None)
 	getargs.add_arg(&a, "c", "check", .None)
 	getargs.add_arg(&a, "h", "no-header", .None)
 	getargs.add_arg(&a, "H", "add-header", .None)
@@ -43,6 +47,7 @@ main :: proc()
 
 	sql: Streamql
 	construct(&sql, cfg)
+	defer destroy(&sql)
 
 	if getargs.get_flag(&a, "verbose") {
 		sql.verbosity = .Noisy
@@ -65,11 +70,36 @@ main :: proc()
 		query_str = util.stdin_to_string()
 	}
 
-	if exec(&sql, query_str) == .Error {
+	if !getargs.get_flag(&a, "api") {
+		if exec(&sql, query_str) == .Error {
+			os.exit(2)
+		}
+		os.exit(0)
+	}
+
+	/* Using API from here below */
+	if generate_plans(&sql, query_str) == .Error {
 		os.exit(2)
 	}
 
-	getargs.destroy(&a)
-	destroy(&sql)
+	fields, res := step(&sql)
+	for ; res == .Running; fields, res = step(&sql) {
+		first := true
+		for f in fields {
+			if !first {
+				fmt.print(',')
+			}
+			first = false
+			switch v in f.data {
+			case i64:
+				fmt.printf("%d", v)
+			case f64:
+				fmt.printf("%f", v)
+			case string:
+				fmt.print(v)
+			}
+		}
+		fmt.println()
+	}
 }
 

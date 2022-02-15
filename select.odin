@@ -11,6 +11,7 @@ Select :: struct {
 	expressions: [dynamic]Expression,
 	select_list: [dynamic]^Select,
 	const_dest: ^Expression,
+	api_ref: ^[]Field,
 	top_count: i64,
 	offset: i64,
 	row_num: i64,
@@ -54,6 +55,31 @@ select_preop :: proc(sql: ^Streamql, s: ^Select, q: ^Query) -> Result {
 		return .Ok
 	}
 	return not_implemented()
+}
+
+select_connect_api :: proc(q: ^Query, api: ^[]Field) -> Result {
+	s := &q.operation.(Select)
+	if q.orderby == nil {
+		s.select__ = _select_api
+	} else {
+		s.select__ = _select_order_api
+	}
+	op_expand_asterisks(q, true)
+
+	api^ = make([]Field, len(s.expressions))
+	s.api_ref = api
+
+	for i := 0; i < len(s.expressions); i += 1 {
+		if _, is_subq := s.expressions[i].data.(Expr_Subquery); is_subq {
+			return not_implemented()
+		}
+
+		//if s.expressions[i].data_type = .String {
+		//	api[i]._sb = strings.make_builder()
+		//}
+	}
+
+	return .Ok
 }
 
 select_add_expression :: proc(s: ^Select, expr: ^Expression) -> ^Expression {
@@ -145,8 +171,35 @@ _select :: proc(sel: ^Select, recs: ^Record) -> Result {
 }
 
 _select_api :: proc(sel: ^Select, recs: ^Record) -> Result {
-	not_implemented()
-	return .Error
+	sel.row_num += 1
+
+	res: Result
+
+	for expr, i in &sel.expressions {
+		sel.api_ref[i].is_null = false
+		switch expr.data_type {
+		case .Int:
+			sel.api_ref[i].data, res = expression_get_int(&expr, recs)
+		case .Float:
+			sel.api_ref[i].data, res = expression_get_float(&expr, recs)
+		case .String:
+			s: string
+			strings.reset_builder(&sel.api_ref[i]._sb)
+			s, res = expression_get_string(&expr, recs)
+			strings.write_string(&sel.api_ref[i]._sb, s)
+			sel.api_ref[i].data = strings.to_string(sel.api_ref[i]._sb)
+		}
+
+		#partial switch res {
+		case .Null:
+			sel.api_ref[i].is_null = true
+		case .Ok:
+		case:
+			return .Error
+		}
+	}
+	
+	return .Ok
 }
 
 _select_order_api:: proc(sel: ^Select, recs: ^Record) -> Result {

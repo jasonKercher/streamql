@@ -100,9 +100,31 @@ logic_group_eval :: proc(lg: ^Logic_Group, recs: ^Record, skip: ^Logic) -> (trut
 	return logic_group_eval(lg, recs, skip)
 }
 
-logic_group_must_be_true :: proc(lg: ^Logic_Group, l: ^Logic) -> bool {
-	not_implemented()
-	return false
+logic_group_must_be_true :: proc(lg: ^Logic_Group, check: ^Logic) -> bool {
+	if lg.type == .Predicate || lg.type == .Predicate_Negated {
+		if lg.condition == check {
+			return false
+		}
+		return lg.type != .Predicate_Negated
+	}
+
+	truthy := logic_group_must_be_true(lg.items[0], check)
+
+	/* Check for short circuit */
+	#partial switch lg.type {
+	case .Or:
+		if truthy {
+			return true
+		}
+	case .And:
+		if !truthy {
+			return false
+		}
+	case .Not:
+		return !truthy
+	}
+
+	return logic_group_must_be_true(lg, check)
 }
 
 

@@ -7,19 +7,6 @@ import "core:fmt"
 
 DATA_TYPE_COUNT :: 3
 
-Data_Type :: enum {
-	Int,
-	Float,
-	String,
-}
-
-/* maybe just do: i128, f128 ?? */
-Data :: union {
-	i64,
-	f64,
-	string,
-}
-
 data_determine_type :: proc(t0, t1: Data_Type) -> Data_Type {
 	if t0 == t1 {
 		return t0

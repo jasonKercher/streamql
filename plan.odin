@@ -606,6 +606,9 @@ _calculate_execution_order :: proc(p: ^Plan) {
 
 	node := bigraph.traverse(&p.proc_graph)
 	for i := 0; node != nil; i += 1 {
+		if node == p.op_true {
+			node.data.state += {.Is_Op_True}
+		}
 		p.execute_vector[i] = node.data
 		node = bigraph.traverse(&p.proc_graph)
 	}

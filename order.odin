@@ -3,8 +3,12 @@ package streamql
 
 import "core:fmt"
 
+Order_Select_Call :: proc(o: ^Order, p: ^Process) -> Result
+
 Order :: struct {
 	expressions: [dynamic]Expression,
+	api_ref: ^[]Field,
+	select__: Order_Select_Call,
 	top_count: i64,
 }
 
@@ -15,6 +19,11 @@ destroy_order :: proc(o: ^Order) {
 order_add_expression :: proc(o: ^Order, expr: ^Expression) -> ^Expression {
 	append(&o.expressions, expr^)
 	return &o.expressions[len(o.expressions) - 1]
+}
+
+order_connect_api :: proc(q: ^Query, api: ^[]Field) {
+	q.orderby.api_ref = api
+	q.orderby.select__ = _order_select_api
 }
 
 order_preresolve :: proc(o: ^Order, sel: ^Select, sources: []Source) -> Result {
@@ -73,4 +82,8 @@ order_preresolve :: proc(o: ^Order, sel: ^Select, sources: []Source) -> Result {
 	}
 
 	return .Ok
+}
+
+_order_select_api :: proc(o: ^Order, p: ^Process) -> Result {
+	return not_implemented()
 }

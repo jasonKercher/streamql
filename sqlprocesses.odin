@@ -220,7 +220,7 @@ sql_select :: proc(_p: ^Process) -> Result {
 	iters: u16 = 0
 	for recs := fifo.begin(in_); recs != fifo.end(in_); {
 		iters += 1 
-		if iters >= _p.max_iters || main_select.rows_affected >= current_select.top_count {
+		if iters > _p.max_iters || main_select.rows_affected >= current_select.top_count {
 			res = .Running
 			break
 		}

@@ -56,6 +56,26 @@ Result :: enum u8 {
 	_Waiting_Out1,
 }
 
+/* maybe just do: i128, f128 ?? */
+Data :: union {
+	i64,
+	f64,
+	string,
+}
+
+Data_Type :: enum {
+	Int,
+	Float,
+	String,
+}
+
+Field :: struct {
+	name: string,
+	data: Data,
+	_sb: strings.Builder,
+	is_null: bool,
+}
+
 @private
 _Branch_State :: enum u8 {
 	No_Branch,
@@ -67,6 +87,7 @@ _Branch_State :: enum u8 {
 Streamql :: struct {
 	parser: Parser,
 	listener: Listener,
+	api: []Field,
 	default_schema: string,
 	schema_map: map[string]^Schema,
 	schema_paths: [dynamic]string,
@@ -76,6 +97,7 @@ Streamql :: struct {
 	in_delim: string,
 	out_delim: string,
 	rec_term: string,
+	query_idx: i32,
 	curr_scope: i32,
 	pipe_factor: u32,
 	config: bit_set[Config],
@@ -94,7 +116,7 @@ construct :: proc(sql: ^Streamql, cfg: bit_set[Config] = {}) {
 		config = cfg,
 	}
 
-	sql.pipe_factor = .Thread in sql.config ? PIPE_DEFAULT_THREAD : PIPE_DEFAULT
+	sql.pipe_factor = .Thread in cfg ? PIPE_DEFAULT_THREAD : PIPE_DEFAULT
 
 	/* scopes[0] == global scope */
 	append(&sql.scopes, make_scope())
@@ -126,7 +148,7 @@ generate_plans :: proc(sql: ^Streamql, query_str: string) -> Result {
 exec_plans :: proc(sql: ^Streamql, limit: int = bits.I32_MAX) -> Result {
 	res: Result
 
-	i := 0
+	i := int(sql.query_idx)
 
 	for ; i < len(sql.queries); i += 1 {
 		if .Has_Stepped in sql.queries[i].plan.state {
@@ -158,6 +180,9 @@ exec_plans :: proc(sql: ^Streamql, limit: int = bits.I32_MAX) -> Result {
 		i = int(sql.queries[i].next_idx)
 	}
 
+	sql.query_idx = i32(i)
+
+	/* Add option to keep queries? */
 	if res == .Error || i >= len(sql.queries) {
 		reset(sql)
 	}
@@ -175,9 +200,43 @@ exec :: proc(sql: ^Streamql, query_str: string) -> Result {
 	return exec_plans(sql)
 }
 
+step :: proc(sql: ^Streamql) -> (fields: []Field, res: Result) {
+	q := sql.queries[sql.query_idx]
+	if .Has_Stepped not_in q.plan.state {
+		if len(sql.api) == 0 {
+			_api_connect(sql)
+		}
+		q.plan.state += {.Has_Stepped}
+
+		query_prepare(sql, q) or_return
+
+		for p in &q.plan.execute_vector {
+			p.max_iters = 1
+		}
+	}
+
+	res = query_step(sql, q)
+	if res == .Running {
+		return sql.api, .Running
+	}
+
+	delete(sql.api)
+	sql.api = nil
+
+	q.plan.state -= {.Has_Stepped}
+
+	if res == .Error || int(sql.query_idx) >= len(sql.queries) {
+		reset(sql)
+	}
+
+	return
+}
+
 reset :: proc(sql: ^Streamql) {
 	clear(&sql.queries)
 	clear(&sql.scopes)
+
+	sql.query_idx = 0
 
 	/* scopes[0] == global scope */
 	append(&sql.scopes, make_scope())
@@ -201,6 +260,35 @@ not_implemented :: proc(loc := #caller_location) -> Result {
 	return .Error
 }
 
+@private
 _print_footer :: proc(q: ^Query) {
 	not_implemented()
 }
+
+@private
+_api_connect :: proc(sql: ^Streamql) -> Result {
+	q := sql.queries[sql.query_idx]
+	sel, is_sel := &q.operation.(Select)
+	if !is_sel || q.into_table_name != "" {
+		fmt.eprintln("can only step through SELECT queries")
+		return .Error
+	}
+
+	select_connect_api(q, &sql.api) or_return
+	if q.orderby != nil {
+		order_connect_api(q, &sql.api)
+	}
+
+	/* If we are using the API, we must read every field */
+	for p in &q.plan.execute_vector {
+		if p.action__ == sql_read {
+			src := p.data.(^Source)
+			r := &src.schema.data.(Reader)
+			r.max_field_idx = max(i32)
+		}
+	}
+
+	return .Ok
+}
+
+
