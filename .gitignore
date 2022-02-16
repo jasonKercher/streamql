@@ -1,5 +1,6 @@
 streamql
 test.sql
 *.txt
+*.temp
 
 .gdb_history

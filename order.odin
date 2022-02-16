@@ -7,7 +7,7 @@ Order_Select_Call :: proc(o: ^Order, p: ^Process) -> Result
 
 Order :: struct {
 	expressions: [dynamic]Expression,
-	api_ref: ^[]Field,
+	api_ref: ^Api,
 	select__: Order_Select_Call,
 	top_count: i64,
 }
@@ -21,7 +21,7 @@ order_add_expression :: proc(o: ^Order, expr: ^Expression) -> ^Expression {
 	return &o.expressions[len(o.expressions) - 1]
 }
 
-order_connect_api :: proc(q: ^Query, api: ^[]Field) {
+order_connect_api :: proc(q: ^Query, api: ^Api) {
 	q.orderby.api_ref = api
 	q.orderby.select__ = _order_select_api
 }

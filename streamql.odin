@@ -69,10 +69,14 @@ Data_Type :: enum {
 	String,
 }
 
+Api :: struct {
+	fields: []Field,
+	_sb: strings.Builder,
+}
+
 Field :: struct {
 	name: string,
 	data: Data,
-	_sb: strings.Builder,
 	is_null: bool,
 }
 
@@ -87,7 +91,7 @@ _Branch_State :: enum u8 {
 Streamql :: struct {
 	parser: Parser,
 	listener: Listener,
-	api: []Field,
+	api: ^Api,
 	default_schema: string,
 	schema_map: map[string]^Schema,
 	schema_paths: [dynamic]string,
@@ -203,7 +207,7 @@ exec :: proc(sql: ^Streamql, query_str: string) -> Result {
 step :: proc(sql: ^Streamql) -> (fields: []Field, res: Result) {
 	q := sql.queries[sql.query_idx]
 	if .Has_Stepped not_in q.plan.state {
-		if len(sql.api) == 0 {
+		if sql.api == nil {
 			_api_connect(sql)
 		}
 		q.plan.state += {.Has_Stepped}
@@ -217,10 +221,11 @@ step :: proc(sql: ^Streamql) -> (fields: []Field, res: Result) {
 
 	res = query_step(sql, q)
 	if res == .Running {
-		return sql.api, .Running
+		return sql.api.fields, .Running
 	}
 
-	delete(sql.api)
+	delete(sql.api.fields)
+	free(sql.api)
 	sql.api = nil
 
 	q.plan.state -= {.Has_Stepped}
@@ -274,9 +279,11 @@ _api_connect :: proc(sql: ^Streamql) -> Result {
 		return .Error
 	}
 
-	select_connect_api(q, &sql.api) or_return
+	sql.api = new(Api)
+	select_connect_api(q, sql.api) or_return
+
 	if q.orderby != nil {
-		order_connect_api(q, &sql.api)
+		order_connect_api(q, sql.api)
 	}
 
 	/* If we are using the API, we must read every field */
