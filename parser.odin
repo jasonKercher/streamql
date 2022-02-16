@@ -1414,7 +1414,7 @@ _parse_enter :: proc(sql: ^Streamql) -> Result {
 	ret : Result
 
 	curr_tok := p.tokens[p.curr]
-	preview_end := u32(len(p.text)) - curr_tok.begin
+	preview_end := u32(len(p.text))
 	if preview_end - curr_tok.begin > PREVIEW_MAX {
 		preview_end = curr_tok.begin + PREVIEW_MAX
 	}
