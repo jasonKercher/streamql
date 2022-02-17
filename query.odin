@@ -35,9 +35,9 @@ Query :: struct {
 	state: ^Listener_State,
 	top_count: i64,
 	top_expr: ^Expression,
-	next_idx_ref: ^u32,
-	next_idx: u32,
-	idx: u32,
+	next_idx_ref: ^i32,
+	next_idx: i32,
+	idx: i32,
 	into_table_var: i32,
 	union_id: i32,
 	sub_id: i16,
@@ -130,7 +130,7 @@ query_exec_thread :: proc(sql: ^Streamql, q: ^Query) -> Result {
 @(private = "file")
 _exec_one_pass :: proc(exec_vector: []Process) -> (rows_affected: int, res: Result) {
 	exec_vector := exec_vector
-	res = .Eof
+	res = .Complete
 
 	for process in &exec_vector {
 		if .Is_Enabled not_in process.state {

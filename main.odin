@@ -29,12 +29,6 @@ main :: proc()
 	}
 
 	cfg: bit_set[Config] = {}
-	if getargs.get_flag(&a, "print-plan") {
-		cfg += {.Print_Plan}
-	}
-	if getargs.get_flag(&a, "parse-only") {
-		cfg += {.Parse_Only}
-	}
 	if getargs.get_flag(&a, "check") {
 		cfg += {.Check}
 	}
@@ -43,6 +37,12 @@ main :: proc()
 	}
 	if getargs.get_flag(&a, "add-header") {
 		cfg += {.Add_Header}
+	}
+	if getargs.get_flag(&a, "parse-only") {
+		cfg += {.Parse_Only}
+	}
+	if getargs.get_flag(&a, "print-plan") {
+		cfg += {.Print_Plan}
 	}
 
 	sql: Streamql

@@ -230,6 +230,8 @@ step :: proc(sql: ^Streamql) -> (fields: []Field, res: Result) {
 
 	q.plan.state -= {.Has_Stepped}
 
+	sql.query_idx = q.next_idx
+
 	if res == .Error || int(sql.query_idx) >= len(sql.queries) {
 		reset(sql)
 	}

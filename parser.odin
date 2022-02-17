@@ -181,7 +181,7 @@ _send_column_or_const :: proc(sql: ^Streamql, begin: u32) -> Result {
 	bit_array.set(&p.consumed, begin)
 	#partial switch tok.type {
 	case .Sym_Asterisk:
-		return parse_send_asterisk(sql, tok, nil)
+		return listener_send_asterisk(sql, tok, nil)
 	case .Query_Name:
 		next_idx := _peek_next_token(p, begin)
 		if p.tokens[next_idx].type == .Sym_Dot {
@@ -191,20 +191,20 @@ _send_column_or_const :: proc(sql: ^Streamql, begin: u32) -> Result {
 			field_name_tok := &p.tokens[next_idx]
 			#partial switch field_name_tok.type {
 			case .Query_Name:
-				return parse_send_name(sql, field_name_tok, tok)
+				return listener_send_name(sql, field_name_tok, tok)
 			case .Sym_Asterisk:
-				return parse_send_asterisk(sql, field_name_tok, tok)
+				return listener_send_asterisk(sql, field_name_tok, tok)
 			case:
 				return parse_error(p, "unexpected token")
 			}
 		}
-		return parse_send_name(sql, tok, nil)
+		return listener_send_name(sql, tok, nil)
 	case .Literal_Int:
-		return parse_send_int(sql, tok)
+		return listener_send_int(sql, tok)
 	case .Literal_Float:
-		return parse_send_float(sql, tok)
+		return listener_send_float(sql, tok)
 	case .Literal_String:
-		return parse_send_string(sql, tok)
+		return listener_send_string(sql, tok)
 	case:
 		return parse_error(p, "unexpected token")
 	}
@@ -359,7 +359,7 @@ _parse_expression :: proc(sql: ^Streamql, begin, end: u32, group: u16) -> Result
 	if next := _peek_next_token(p, begin); _token_in_current_expr(p, next, group) && 
 	    p.tokens[begin].type == .Sym_Lparen &&
 	    p.tokens[next].type == .Select {
-		parse_enter_subquery_const(sql)
+		listener_enter_subquery_const(sql)
 
 		curr_bak := p.curr
 		p.curr = begin
@@ -368,7 +368,7 @@ _parse_expression :: proc(sql: ^Streamql, begin, end: u32, group: u16) -> Result
 		_parse_select_stmt(sql) or_return
 
 		p.curr = curr_bak
-		parse_leave_subquery_const(sql)
+		listener_leave_subquery_const(sql)
 		return .Ok
 	}
 
@@ -378,7 +378,7 @@ _parse_expression :: proc(sql: ^Streamql, begin, end: u32, group: u16) -> Result
 	}
 
 	/* Lowest precedence first */
-	for i := begin; i < end; i += 1 {
+	for i := end - 1; i >= begin; i -= 1 {
 		if !_token_in_current_expr(p, i, group) {
 			continue
 		}
@@ -393,16 +393,16 @@ _parse_expression :: proc(sql: ^Streamql, begin, end: u32, group: u16) -> Result
 			fallthrough
 		case .Sym_Bit_Xor:
 			bit_array.set(&p.consumed, i)
-			parse_enter_function(sql, &p.tokens[i])
+			listener_enter_function(sql, &p.tokens[i])
 			_parse_expression_runner(sql, begin, i) or_return
 			_parse_expression_runner(sql, i + 1, end) or_return
-			parse_leave_function(sql, &p.tokens[i])
+			listener_leave_function(sql, &p.tokens[i])
 		case:
 		}
 	}
 
 	/* multiplication derivatives */
-	for i := begin; i < end; i += 1 {
+	for i := end - 1; i >= begin; i -= 1 {
 		if !_token_in_current_expr(p, i, group) {
 			continue
 		}
@@ -413,16 +413,16 @@ _parse_expression :: proc(sql: ^Streamql, begin, end: u32, group: u16) -> Result
 			fallthrough
 		case .Sym_Modulus:
 			bit_array.set(&p.consumed, i)
-			parse_enter_function(sql, &p.tokens[i])
+			listener_enter_function(sql, &p.tokens[i])
 			_parse_expression_runner(sql, begin, i) or_return
 			_parse_expression_runner(sql, i + 1, end) or_return
-			parse_leave_function(sql, &p.tokens[i])
+			listener_leave_function(sql, &p.tokens[i])
 		case:
 		}
 	}
 
 	/* unary expressions */
-	for i := begin; i < end; i += 1 {
+	for i := end - 1; i >= begin; i -= 1 {
 		if !_token_in_current_expr(p, i, group) {
 			continue
 		}
@@ -433,15 +433,15 @@ _parse_expression :: proc(sql: ^Streamql, begin, end: u32, group: u16) -> Result
 			fallthrough
 		case .Sym_Bit_Not_Unary:
 			bit_array.set(&p.consumed, i)
-			parse_enter_function(sql, &p.tokens[i])
+			listener_enter_function(sql, &p.tokens[i])
 			_parse_expression_runner(sql, i + 1, end) or_return
-			parse_leave_function(sql, &p.tokens[i])
+			listener_leave_function(sql, &p.tokens[i])
 		case:
 		}
 	}
 
 	/* case expressions */
-	for i := begin; i < end; i += 1 {
+	for i := end - 1; i >= begin; i -= 1 {
 		if !_token_in_current_expr(p, i, group) {
 			continue
 		}
@@ -452,16 +452,16 @@ _parse_expression :: proc(sql: ^Streamql, begin, end: u32, group: u16) -> Result
 	}
 
 	/* functions */
-	for i := begin; i != end; i += 1 {
+	for i := end - 1; i >= begin; i -= 1 {
 		if !_token_in_current_expr(p, i, group) {
 			continue
 		}
 		if fn_group := _get_func_group(p.tokens[i].type); fn_group != .None {
 			bit_array.set(&p.consumed, i)
-			parse_enter_function(sql, &p.tokens[i])
+			listener_enter_function(sql, &p.tokens[i])
 			_get_next_token(p, &i)
 			_parse_function(sql, &i, p.tokens[i].type == .Count) or_return
-			parse_leave_function(sql, &p.tokens[i])
+			listener_leave_function(sql, &p.tokens[i])
 		}
 	}
 
@@ -713,7 +713,7 @@ _is_single_boolean_expression :: proc (p: ^Parser, begin, end: u32) -> bool {
 }
 
 @(private="file")
-_parse_send_predicate :: proc(sql: ^Streamql, begin: u32) -> Result {
+_listener_send_predicate :: proc(sql: ^Streamql, begin: u32) -> Result {
 	p := &sql.parser
 	begin := begin
 
@@ -764,13 +764,13 @@ _parse_send_predicate :: proc(sql: ^Streamql, begin: u32) -> Result {
 		fallthrough
 	case .Like:
 		bit_array.set(&p.consumed, oper)
-		parse_enter_predicate(sql, &p.tokens[oper], is_not_predicate, is_not)
+		listener_enter_predicate(sql, &p.tokens[oper], is_not_predicate, is_not)
 		_get_next_token(p, &begin); /* begin now pointing at right side expr */
 		left_tok := p.tokens[left]
 		begin_tok := p.tokens[begin]
 		_parse_expression_runner(sql, left, left_tok.end_expr) or_return
 		_parse_expression_runner(sql, begin, begin_tok.end_expr) or_return
-		parse_leave_predicate(sql, &p.tokens[oper], is_not_predicate, is_not)
+		listener_leave_predicate(sql, &p.tokens[oper], is_not_predicate, is_not)
 	case .In:
 		fallthrough
 	case .Between:
@@ -798,52 +798,52 @@ _parse_boolean_expression :: proc(sql: ^Streamql, begin, end: u32, group: u16) -
 
 	/* Shortcut for leaf node */
 	if _is_single_boolean_expression(p, begin, end) {
-		return _parse_send_predicate(sql, begin)
+		return _listener_send_predicate(sql, begin)
 	}
 
 	/* First, split on OR */
-	for i := begin; i != end; i += 1 {
+	for i := end - 1; i >= begin; i -= 1 {
 		if !_token_in_current_expr(p, i, group) {
 			continue
 		}
 		#partial switch p.tokens[i].type {
 		case .Or:
 			bit_array.set(&p.consumed, i)
-			parse_enter_or(sql)
+			listener_enter_or(sql)
 			_parse_boolean_expression_runner(sql, begin, i) or_return
 			_parse_boolean_expression_runner(sql, i + 1, end) or_return
-			parse_leave_or(sql)
+			listener_leave_or(sql)
 		case:
 		}
 	}
 
 	/* Split on AND */
-	for i := begin; i != end; i += 1 {
+	for i := end - 1; i >= begin; i -= 1 {
 		if !_token_in_current_expr(p, i, group) {
 			continue
 		}
 		#partial switch p.tokens[i].type {
 		case .And:
 			bit_array.set(&p.consumed, i)
-			parse_enter_and(sql)
+			listener_enter_and(sql)
 			_parse_boolean_expression_runner(sql, begin, i) or_return
 			_parse_boolean_expression_runner(sql, i + 1, end) or_return
-			parse_leave_and(sql)
+			listener_leave_and(sql)
 		case:
 		}
 	}
 
 	/* Split on NOT */
-	for i := begin; i != end; i += 1 {
+	for i := end - 1; i >= begin; i -= 1 {
 		if !_token_in_current_expr(p, i, group) {
 			continue
 		}
 		#partial switch p.tokens[i].type {
 		case .Not:
 			bit_array.set(&p.consumed, i)
-			parse_enter_not(sql)
+			listener_enter_not(sql)
 			_parse_boolean_expression_runner(sql, i + 1, end) or_return
-			parse_leave_not(sql)
+			listener_leave_not(sql)
 		case:
 		}
 	}
@@ -981,7 +981,7 @@ _parse_execute_stmt :: proc(sql: ^Streamql) -> Result {
 _parse_into_stmt :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
 	_get_next_token_or_die(p) or_return
-	parse_send_into_name(sql, &p.tokens[p.curr]) or_return
+	listener_send_into_name(sql, &p.tokens[p.curr]) or_return
 	if _get_next_token(p) {
 		return .Ok
 	}
@@ -1005,7 +1005,7 @@ _parse_into_stmt :: proc(sql: ^Streamql) -> Result {
 @(private="file")
 _parse_subquery_source :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
-	parse_enter_subquery_source(sql)
+	listener_enter_subquery_source(sql)
 
 	at_select := p.curr
 
@@ -1021,7 +1021,7 @@ _parse_subquery_source :: proc(sql: ^Streamql) -> Result {
 	/* ready to begin parsing higher level query now */
 	p.curr = after_subquery
 
-	parse_leave_subquery_source(sql)
+	listener_leave_subquery_source(sql)
 	return ret
 }
 
@@ -1068,7 +1068,7 @@ _parse_source_item :: proc(sql: ^Streamql) -> Result {
 
 	/* Not a subquery... */
 	if i >= 0 {
-		parse_send_table_source(sql, name_chain[:i + 1])
+		listener_send_table_source(sql, name_chain[:i + 1])
 	}
 
 	if _get_next_token(p) {
@@ -1084,7 +1084,7 @@ _parse_source_item :: proc(sql: ^Streamql) -> Result {
 	if p.tokens[p.curr].type == .Query_Name ||
 	    p.tokens[p.curr].type == .Query_Variable {
 		bit_array.set(&p.consumed, p.curr)
-		parse_send_source_alias(sql, &p.tokens[p.curr])
+		listener_send_source_alias(sql, &p.tokens[p.curr])
 		_get_next_token(p)
 	}
 
@@ -1094,7 +1094,7 @@ _parse_source_item :: proc(sql: ^Streamql) -> Result {
 @(private="file")
 _parse_from_stmt :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
-	//parse_enter_from(sql)
+	//listener_enter_from(sql)
 	in_source_list := true
 
 	bit_array.set(&p.consumed, p.curr)
@@ -1139,7 +1139,7 @@ _parse_from_stmt :: proc(sql: ^Streamql) -> Result {
 			break
 		}
 
-		parse_send_join_type(sql, &p.tokens[join_type_idx]) or_return
+		listener_send_join_type(sql, &p.tokens[join_type_idx]) or_return
 		_parse_source_item(sql) or_return
 
 		if expect_on {
@@ -1148,13 +1148,13 @@ _parse_from_stmt :: proc(sql: ^Streamql) -> Result {
 			}
 			bit_array.set(&p.consumed, p.curr)
 			_get_next_token_or_die(p) or_return
-			parse_enter_join_logic(sql)
+			listener_enter_join_logic(sql)
 			_find_boolean_expression(sql) or_return
-			parse_leave_join_logic(sql)
+			listener_leave_join_logic(sql)
 		}
 	}
 
-	//parse_leave_from(sql)
+	//listener_leave_from(sql)
 
 	#partial switch p.tokens[p.curr].type {
 	case .Where:
@@ -1175,9 +1175,9 @@ _parse_where_stmt :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
 	bit_array.set(&p.consumed, p.curr)
 	_get_next_token_or_die(p) or_return
-	parse_enter_where(sql)
+	listener_enter_where(sql)
 	_find_boolean_expression(sql) or_return
-	parse_leave_where(sql)
+	listener_leave_where(sql)
 
 	#partial switch p.tokens[p.curr].type {
 	case .Group:
@@ -1223,7 +1223,7 @@ _parse_select_list :: proc(sql: ^Streamql) -> Result {
 
 		if p.tokens[p.curr].type == .Query_Name {
 			bit_array.set(&p.consumed, p.curr)
-			parse_send_column_alias(sql, &p.tokens[p.curr])
+			listener_send_column_alias(sql, &p.tokens[p.curr])
 			if _get_next_token(p) {
 				return .Ok
 			}
@@ -1255,7 +1255,7 @@ _parse_select_list :: proc(sql: ^Streamql) -> Result {
 @(private="file")
 _parse_select_stmt :: proc(sql: ^Streamql) -> Result {
 	p := &sql.parser
-	parse_send_select_stmt(sql)
+	listener_send_select_stmt(sql)
 	bit_array.set(&p.consumed, p.curr)
 	_get_next_token_or_die(p) or_return
 
@@ -1269,14 +1269,14 @@ _parse_select_stmt :: proc(sql: ^Streamql) -> Result {
 				return parse_error(p, "unexpected token")
 			}
 			/* This is really a no-op anyway... */
-			parse_send_all(sql)
+			listener_send_all(sql)
 			bit_array.set(&p.consumed, p.curr)
 			all_or_distinct_allowed = false
 		case .Distinct:
 			if !all_or_distinct_allowed {
 				return parse_error(p, "unexpected token")
 			}
-			parse_send_distinct(sql)
+			listener_send_distinct(sql)
 			bit_array.set(&p.consumed, p.curr)
 			all_or_distinct_allowed = false
 		case .Top:
@@ -1286,7 +1286,7 @@ _parse_select_stmt :: proc(sql: ^Streamql) -> Result {
 			bit_array.set(&p.consumed, p.curr)
 
 			_get_next_token_or_die(p) or_return
-			parse_enter_top_expr(sql)
+			listener_enter_top_expr(sql)
 			expr_begin := p.curr
 
 			extra_level := _find_expression(p, &p.curr, false) or_return
@@ -1296,7 +1296,7 @@ _parse_select_stmt :: proc(sql: ^Streamql) -> Result {
 			_parse_expression_runner(sql,
 			                         expr_begin,
 			                         p.tokens[expr_begin].end_expr) or_return
-			parse_leave_top_expr(sql)
+			listener_leave_top_expr(sql)
 			all_or_distinct_allowed = false
 			top_allowed = false
 		case:
@@ -1425,7 +1425,7 @@ _parse_enter :: proc(sql: ^Streamql) -> Result {
 	query_text, allocated = strings.replace_all(query_text, "\n", " ")
 	query_text, allocated = strings.replace_all(query_text, "\r", " ")
 
-	parse_enter_sql(sql, query_text)
+	listener_enter_sql(sql, query_text)
 
 	#partial switch p.tokens[p.curr].type {
 	case .Query_Name:
@@ -1469,7 +1469,7 @@ _parse_enter :: proc(sql: ^Streamql) -> Result {
 		ret = parse_error(p, "unexpected token")
 	}
 
-	parse_leave_sql(sql)
+	listener_leave_sql(sql)
 
 	return ret
 }

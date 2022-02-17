@@ -69,8 +69,13 @@ make_expression_const_f :: proc(val: f64) -> Expression {
 }
 
 make_expression_const_s :: proc(s: string) -> Expression {
+	/* Replace escaped ' in constant string */
+	cpy, was_allocation := strings.replace_all(s, "''", "'")
+	if !was_allocation {
+		cpy = strings.clone(cpy)
+	}
 	return Expression {
-		data = Expr_Constant(strings.clone(s)),
+		data = Expr_Constant(cpy),
 		data_type = .String,
 		subq_idx = -1,
 	}
@@ -266,9 +271,8 @@ expression_get_int :: proc(expr: ^Expression, recs: ^Record = nil) -> (ret_val: 
 		new_data: Data = rec.fields[v.item.loc]
 		return data_to_int(&new_data)
 	case Expr_Function:
-		new_data: Data
 		strings.reset_builder(&expr.buf)
-		v.call__(&v, &new_data, recs, &expr.buf) or_return
+		new_data := v.call__(&v, recs, &expr.buf) or_return
 		return data_to_int(&new_data)
 	}
 	return 0, not_implemented()
@@ -292,9 +296,8 @@ expression_get_float :: proc(expr: ^Expression, recs: ^Record = nil) -> (ret_val
 		new_data: Data = rec.fields[v.item.loc]
 		return data_to_float(&new_data)
 	case Expr_Function:
-		new_data: Data
 		strings.reset_builder(&expr.buf)
-		v.call__(&v, &new_data, recs, &expr.buf) or_return
+		new_data := v.call__(&v, recs, &expr.buf) or_return
 		return data_to_float(&new_data)
 	}
 	return 0, not_implemented()
@@ -317,9 +320,8 @@ expression_get_string :: proc(expr: ^Expression, recs: ^Record = nil) -> (ret_va
 		}
 		return rec.fields[v.item.loc], .Ok
 	case Expr_Function:
-		new_data: Data
 		strings.reset_builder(&expr.buf)
-		v.call__(&v, &new_data, recs, &expr.buf) or_return
+		new_data := v.call__(&v, recs, &expr.buf) or_return
 		return data_to_string(&new_data, &expr.buf)
 	}
 	return "", not_implemented()

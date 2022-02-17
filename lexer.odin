@@ -476,7 +476,13 @@ _get_name :: proc(p: ^Parser, group: int, idx: ^u32) {
 _get_string :: proc(p: ^Parser, group: int, idx: ^u32) -> Result {
 	idx^ += 1
 	real_begin := idx^
-	for ; idx^ < u32(len(p.text)) && p.text[idx^] != '\''; idx^ += 1 {}
+	loop: for ;; idx^ += 2 {
+		for ; idx^ < u32(len(p.text)) && p.text[idx^] != '\''; idx^ += 1 {}
+		/* Check for escaped ' ('') */
+		if idx^ + 1 >= u32(len(p.text)) || p.text[idx^ + 1] != '\'' {
+			break loop
+		}
+	}
 
 	if idx^ >= u32(len(p.text)) {
 		return lex_error(p, idx^, "unmatched '\''")
@@ -685,7 +691,7 @@ _lex_tokenize :: proc(p: ^Parser) -> Result {
 		case unicode.is_space(rune(p.text[i])):
 			_skip_whitespace(p, &i)
 		case p.text[i] == '\'':
-			_get_string(p, group, &i)
+			_get_string(p, group, &i) or_return
 		case p.text[i] == '[':
 			_get_qualified_name(p, group, &i) or_return
 		case unicode.is_digit(rune(p.text[i])) ||
@@ -759,7 +765,7 @@ lex_error_check :: proc(t: ^testing.T) {
 	p.text = "select /* a comment * / 1,2 from foo"
 	testing.expect_value(t, lex_lex(&p), Result.Error)
 
-	/* Will throw p error as multiply, divide */
+	/* Will throw parse error as multiply, divide */
 	//p.text = "select / * a comment */ 1,2 from foo"
 	//testing.expect_value(t, lex_lex(&p), Result.Error)
 
@@ -791,7 +797,20 @@ lex_check :: proc(t: ^testing.T) {
 	 * with .Query_Begin and .Query_End
 	 */
 
-	//      01      2   3    4   5    6   7  890 1
+	//       01      23 45 6             7
+	p.text = "select 1, 2, 'abc''''de'''"
+	testing.expect_value(t, lex_lex(&p), Result.Ok)
+	testing.expect_value(t, len(p.tokens), 8)
+	testing.expect_value(t, p.tokens[0].type, Token_Type.Query_Begin)
+	testing.expect_value(t, p.tokens[1].type, Token_Type.Select)
+	testing.expect_value(t, p.tokens[2].type, Token_Type.Literal_Int)
+	testing.expect_value(t, p.tokens[3].type, Token_Type.Sym_Comma)
+	testing.expect_value(t, p.tokens[4].type, Token_Type.Literal_Int)
+	testing.expect_value(t, p.tokens[5].type, Token_Type.Sym_Comma)
+	testing.expect_value(t, p.tokens[6].type, Token_Type.Literal_String)
+	testing.expect_value(t, p.tokens[7].type, Token_Type.Query_End)
+
+	//       01      2   3    4   5    6   7  890 1
 	p.text = "select col from foo join foo on 1=1"
 	testing.expect_value(t, lex_lex(&p), Result.Ok)
 	testing.expect_value(t, len(p.tokens), 12)

@@ -38,7 +38,7 @@ Listener :: struct {
 	sub_id: i16,
 }
 
-parse_enter_sql :: proc(sql: ^Streamql, query_text: string) -> Result {
+listener_enter_sql :: proc(sql: ^Streamql, query_text: string) -> Result {
 	if .Parse_Only in sql.config {
 		fmt.eprintf("ENTER SQL\n")
 		return .Ok
@@ -48,7 +48,7 @@ parse_enter_sql :: proc(sql: ^Streamql, query_text: string) -> Result {
 	l.sub_id = 0
 
 	q := new_query(l.sub_id, query_text)
-	q.idx = u32(len(sql.queries))
+	q.idx = i32(len(sql.queries))
 	q.next_idx = q.idx + 1
 	append(&sql.queries, q)
 	append(&l.query_stack, q)
@@ -57,7 +57,7 @@ parse_enter_sql :: proc(sql: ^Streamql, query_text: string) -> Result {
 	return .Ok
 }
 
-parse_leave_sql :: proc(sql: ^Streamql) -> Result {
+listener_leave_sql :: proc(sql: ^Streamql) -> Result {
 	if .Parse_Only in sql.config {
 		fmt.eprintf("LEAVE SQL\n")
 		return .Ok
@@ -83,7 +83,7 @@ parse_leave_sql :: proc(sql: ^Streamql) -> Result {
 		case .If:
 			fallthrough
 		case .Else_If:
-			prev_branch.last_true_block_query.next_idx = u32(len(sql.queries))
+			prev_branch.last_true_block_query.next_idx = i32(len(sql.queries))
 		case .While:
 			prev_branch.last_true_block_query.next_idx = prev_query.idx
 		}
@@ -117,7 +117,7 @@ parse_leave_sql :: proc(sql: ^Streamql) -> Result {
 	return .Ok
 }
 
-parse_send_int :: proc(sql: ^Streamql, tok: ^Token) -> Result {
+listener_send_int :: proc(sql: ^Streamql, tok: ^Token) -> Result {
 	s := token_to_string(&sql.parser, tok)
 	if .Parse_Only in sql.config {
 		fmt.eprintf("SEND INT %s\n", s)
@@ -135,7 +135,7 @@ parse_send_int :: proc(sql: ^Streamql, tok: ^Token) -> Result {
 	return ret
 }
 
-parse_send_float :: proc(sql: ^Streamql, tok: ^Token) -> Result {
+listener_send_float :: proc(sql: ^Streamql, tok: ^Token) -> Result {
 	s := token_to_string(&sql.parser, tok)
 	if .Parse_Only in sql.config {
 		fmt.eprintf("SEND FLOAT %s\n", s)
@@ -153,7 +153,7 @@ parse_send_float :: proc(sql: ^Streamql, tok: ^Token) -> Result {
 	return ret
 }
 
-parse_send_string :: proc(sql: ^Streamql, tok: ^Token) -> Result {
+listener_send_string :: proc(sql: ^Streamql, tok: ^Token) -> Result {
 	s := token_to_string(&sql.parser, tok)
 	if .Parse_Only in sql.config {
 		fmt.eprintf("SEND STRING %s\n", s)
@@ -164,7 +164,7 @@ parse_send_string :: proc(sql: ^Streamql, tok: ^Token) -> Result {
 	return ret
 }
 
-parse_send_name :: proc(sql: ^Streamql, tok: ^Token, table_name_tok: ^Token) -> Result {
+listener_send_name :: proc(sql: ^Streamql, tok: ^Token, table_name_tok: ^Token) -> Result {
 	field_str := token_to_string(&sql.parser, tok)
 	table_str := token_to_string(&sql.parser, table_name_tok)
 	if .Parse_Only in sql.config {
@@ -182,7 +182,7 @@ parse_send_name :: proc(sql: ^Streamql, tok: ^Token, table_name_tok: ^Token) -> 
 	return ret
 }
 
-parse_send_asterisk :: proc(sql: ^Streamql, tok: ^Token, table_name_tok: ^Token) -> Result {
+listener_send_asterisk :: proc(sql: ^Streamql, tok: ^Token, table_name_tok: ^Token) -> Result {
 	if .Parse_Only in sql.config {
 		if (table_name_tok == nil) {
 			fmt.eprintf("SEND ASTERISK\n")
@@ -197,7 +197,7 @@ parse_send_asterisk :: proc(sql: ^Streamql, tok: ^Token, table_name_tok: ^Token)
 	return ret
 }
 
-parse_send_variable :: proc(sql: ^Streamql, tok: ^Token) -> Result {
+listener_send_variable :: proc(sql: ^Streamql, tok: ^Token) -> Result {
 	if .Parse_Only in sql.config {
 		fmt.eprintf("SEND VAR %s\n", token_to_string(&sql.parser, tok))
 		return .Ok
@@ -208,7 +208,7 @@ parse_send_variable :: proc(sql: ^Streamql, tok: ^Token) -> Result {
 	return ret
 }
 
-parse_send_column_alias :: proc(sql: ^Streamql, tok: ^Token) -> Result {
+listener_send_column_alias :: proc(sql: ^Streamql, tok: ^Token) -> Result {
 	s := token_to_string(&sql.parser, tok)
 	if .Parse_Only in sql.config {
 		fmt.eprintf("SEND COLUMN ALIAS %s\n", s)
@@ -219,7 +219,7 @@ parse_send_column_alias :: proc(sql: ^Streamql, tok: ^Token) -> Result {
 	return .Ok
 }
 
-parse_enter_subquery_const :: proc(sql: ^Streamql) -> Result {
+listener_enter_subquery_const :: proc(sql: ^Streamql) -> Result {
 	if .Parse_Only in sql.config {
 		fmt.eprintf("ENTER SUBQUERY CONST\n")
 		return .Ok
@@ -234,7 +234,7 @@ parse_enter_subquery_const :: proc(sql: ^Streamql) -> Result {
 	return .Ok
 }
 
-parse_leave_subquery_const :: proc(sql: ^Streamql) -> Result {
+listener_leave_subquery_const :: proc(sql: ^Streamql) -> Result {
 	if .Parse_Only in sql.config {
 		fmt.eprintf("LEAVE SUBQUERY CONST\n")
 		return .Ok
@@ -251,7 +251,7 @@ parse_leave_subquery_const :: proc(sql: ^Streamql) -> Result {
 	return ret
 }
 
-parse_enter_function :: proc(sql: ^Streamql, tok: ^Token) -> Result {
+listener_enter_function :: proc(sql: ^Streamql, tok: ^Token) -> Result {
 	if .Parse_Only in sql.config {
 		#partial switch tok.type {
 		case .Sym_Minus_Unary:
@@ -300,7 +300,7 @@ parse_enter_function :: proc(sql: ^Streamql, tok: ^Token) -> Result {
 	return .Ok
 }
 
-parse_leave_function :: proc(sql: ^Streamql, tok: ^Token) -> Result {
+listener_leave_function :: proc(sql: ^Streamql, tok: ^Token) -> Result {
 	if .Parse_Only in sql.config {
 		#partial switch tok.type {
 		case .Sym_Minus_Unary:
@@ -318,7 +318,7 @@ parse_leave_function :: proc(sql: ^Streamql, tok: ^Token) -> Result {
 	return .Ok
 }
 
-parse_send_select_stmt :: proc(sql: ^Streamql) -> Result {
+listener_send_select_stmt :: proc(sql: ^Streamql) -> Result {
 	if .Parse_Only in sql.config {
 		fmt.eprintf("SEND SELECT STMT\n")
 		return .Ok
@@ -336,7 +336,7 @@ parse_send_select_stmt :: proc(sql: ^Streamql) -> Result {
 	return .Ok
 }
 
-parse_send_into_name :: proc(sql: ^Streamql, tok: ^Token) -> Result {
+listener_send_into_name :: proc(sql: ^Streamql, tok: ^Token) -> Result {
 	s := token_to_string(&sql.parser, tok)
 	if .Parse_Only in sql.config {
 		fmt.eprintf("SEND INTO NAME %s\n", token_to_string(&sql.parser, tok))
@@ -347,7 +347,7 @@ parse_send_into_name :: proc(sql: ^Streamql, tok: ^Token) -> Result {
 	return .Ok
 }
 
-parse_enter_subquery_source :: proc(sql: ^Streamql) -> Result {
+listener_enter_subquery_source :: proc(sql: ^Streamql) -> Result {
 	if .Parse_Only in sql.config {
 		fmt.eprintf("ENTER SUBQUERY SOURCE\n")
 		return .Ok
@@ -362,7 +362,7 @@ parse_enter_subquery_source :: proc(sql: ^Streamql) -> Result {
 	return .Ok
 }
 
-parse_leave_subquery_source :: proc(sql: ^Streamql) -> Result {
+listener_leave_subquery_source :: proc(sql: ^Streamql) -> Result {
 	if .Parse_Only in sql.config {
 		fmt.eprintf("LEAVE SUBQUERY SOURCE\n")
 		return .Ok
@@ -376,7 +376,7 @@ parse_leave_subquery_source :: proc(sql: ^Streamql) -> Result {
 	return query_add_subquery_source(q, subquery)
 }
 
-parse_send_table_source :: proc(sql: ^Streamql, chain: []^Token) -> Result {
+listener_send_table_source :: proc(sql: ^Streamql, chain: []^Token) -> Result {
 	table_name := token_to_string(&sql.parser, chain[len(chain) - 1])
 	schema_name := ""
 	database_name := ""  /* probably never used... */
@@ -402,7 +402,7 @@ parse_send_table_source :: proc(sql: ^Streamql, chain: []^Token) -> Result {
 	return query_add_source(sql, q, table_name, schema_name)
 }
 
-parse_send_source_alias :: proc(sql: ^Streamql, tok: ^Token) -> Result {
+listener_send_source_alias :: proc(sql: ^Streamql, tok: ^Token) -> Result {
 	s := token_to_string(&sql.parser, tok)
 	if .Parse_Only in sql.config {
 		fmt.eprintf("SEND SOURCE ALIAS %s\n", s)
@@ -414,7 +414,7 @@ parse_send_source_alias :: proc(sql: ^Streamql, tok: ^Token) -> Result {
 	return .Ok
 }
 
-parse_send_join_type :: proc(sql: ^Streamql, tok: ^Token) -> Result {
+listener_send_join_type :: proc(sql: ^Streamql, tok: ^Token) -> Result {
 	if .Parse_Only in sql.config {
 		type_str: string
 
@@ -457,7 +457,7 @@ parse_send_join_type :: proc(sql: ^Streamql, tok: ^Token) -> Result {
 	return .Ok
 }
 
-parse_enter_where :: proc(sql: ^Streamql) -> Result {
+listener_enter_where :: proc(sql: ^Streamql) -> Result {
 	if .Parse_Only in sql.config {
 		fmt.eprintf("ENTER WHERE\n")
 		return .Ok
@@ -470,7 +470,7 @@ parse_enter_where :: proc(sql: ^Streamql) -> Result {
 	return .Ok
 }
 
-parse_leave_where :: proc(sql: ^Streamql) -> Result {
+listener_leave_where :: proc(sql: ^Streamql) -> Result {
 	if .Parse_Only in sql.config {
 		fmt.eprintf("LEAVE WHERE\n")
 		return .Ok
@@ -481,7 +481,7 @@ parse_leave_where :: proc(sql: ^Streamql) -> Result {
 	return .Ok
 }
 
-parse_enter_join_logic :: proc(sql: ^Streamql) -> Result {
+listener_enter_join_logic :: proc(sql: ^Streamql) -> Result {
 	if .Parse_Only in sql.config {
 		fmt.eprintf("ENTER JOIN LOGIC\n")
 		return .Ok
@@ -495,7 +495,7 @@ parse_enter_join_logic :: proc(sql: ^Streamql) -> Result {
 	return .Ok
 }
 
-parse_leave_join_logic :: proc(sql: ^Streamql) -> Result {
+listener_leave_join_logic :: proc(sql: ^Streamql) -> Result {
 	if .Parse_Only in sql.config {
 		fmt.eprintf("LEAVE JOIN LOGIC\n")
 		return .Ok
@@ -505,7 +505,7 @@ parse_leave_join_logic :: proc(sql: ^Streamql) -> Result {
 	return .Ok
 }
 
-parse_enter_having :: proc(sql: ^Streamql) -> Result {
+listener_enter_having :: proc(sql: ^Streamql) -> Result {
 	if .Parse_Only in sql.config {
 		fmt.eprintf("ENTER HAVING\n")
 		return .Ok
@@ -517,7 +517,7 @@ parse_enter_having :: proc(sql: ^Streamql) -> Result {
 	return .Ok
 }
 
-parse_leave_having :: proc(sql: ^Streamql) -> Result {
+listener_leave_having :: proc(sql: ^Streamql) -> Result {
 	if .Parse_Only in sql.config {
 		fmt.eprintf("LEAVE HAVING\n")
 		return .Ok
@@ -527,7 +527,7 @@ parse_leave_having :: proc(sql: ^Streamql) -> Result {
 	return .Ok
 }
 
-parse_enter_predicate :: proc(sql: ^Streamql, tok: ^Token, is_not_predicate, is_not: bool) -> Result {
+listener_enter_predicate :: proc(sql: ^Streamql, tok: ^Token, is_not_predicate, is_not: bool) -> Result {
 	logic_op_str := token_to_string(&sql.parser, tok)
 
 	if .Parse_Only in sql.config {
@@ -563,7 +563,7 @@ parse_enter_predicate :: proc(sql: ^Streamql, tok: ^Token, is_not_predicate, is_
 	return .Ok
 }
 
-parse_leave_predicate :: proc(sql: ^Streamql, tok: ^Token, is_not_predicate, is_not: bool) -> Result {
+listener_leave_predicate :: proc(sql: ^Streamql, tok: ^Token, is_not_predicate, is_not: bool) -> Result {
 	if .Parse_Only in sql.config {
 		if is_not_predicate {
 			if is_not {
@@ -609,7 +609,7 @@ parse_leave_predicate :: proc(sql: ^Streamql, tok: ^Token, is_not_predicate, is_
 	return .Ok
 }
 
-parse_enter_and :: proc(sql: ^Streamql) -> Result {
+listener_enter_and :: proc(sql: ^Streamql) -> Result {
 	if .Parse_Only in sql.config {
 		fmt.eprintf("ENTER AND\n")
 		return .Ok
@@ -618,7 +618,7 @@ parse_enter_and :: proc(sql: ^Streamql) -> Result {
 	return .Ok
 }
 
-parse_leave_and :: proc(sql: ^Streamql) -> Result {
+listener_leave_and :: proc(sql: ^Streamql) -> Result {
 	if .Parse_Only in sql.config {
 		fmt.eprintf("LEAVE AND\n")
 		return .Ok
@@ -628,7 +628,7 @@ parse_leave_and :: proc(sql: ^Streamql) -> Result {
 	return .Ok
 }
 
-parse_enter_or :: proc(sql: ^Streamql) -> Result {
+listener_enter_or :: proc(sql: ^Streamql) -> Result {
 	if .Parse_Only in sql.config {
 		fmt.eprintf("ENTER OR\n")
 		return .Ok
@@ -637,7 +637,7 @@ parse_enter_or :: proc(sql: ^Streamql) -> Result {
 	return .Ok
 }
 
-parse_leave_or :: proc(sql: ^Streamql) -> Result {
+listener_leave_or :: proc(sql: ^Streamql) -> Result {
 	if .Parse_Only in sql.config {
 		fmt.eprintf("LEAVE OR\n")
 		return .Ok
@@ -647,7 +647,7 @@ parse_leave_or :: proc(sql: ^Streamql) -> Result {
 	return .Ok
 }
 
-parse_enter_not :: proc(sql: ^Streamql) -> Result {
+listener_enter_not :: proc(sql: ^Streamql) -> Result {
 	if .Parse_Only in sql.config {
 		fmt.eprintf("ENTER NOT\n")
 		return .Ok
@@ -656,7 +656,7 @@ parse_enter_not :: proc(sql: ^Streamql) -> Result {
 	return .Ok
 }
 
-parse_leave_not :: proc(sql: ^Streamql) -> Result {
+listener_leave_not :: proc(sql: ^Streamql) -> Result {
 	if .Parse_Only in sql.config {
 		fmt.eprintf("LEAVE NOT\n")
 		return .Ok
@@ -666,7 +666,7 @@ parse_leave_not :: proc(sql: ^Streamql) -> Result {
 	return .Ok
 }
 
-parse_enter_groupby :: proc(sql: ^Streamql) -> Result {
+listener_enter_groupby :: proc(sql: ^Streamql) -> Result {
 	if .Parse_Only in sql.config {
 		fmt.eprintf("ENTER GROUP BY\n")
 		return .Ok
@@ -676,7 +676,7 @@ parse_enter_groupby :: proc(sql: ^Streamql) -> Result {
 	return .Ok
 }
 
-parse_leave_groupby :: proc(sql: ^Streamql) -> Result {
+listener_leave_groupby :: proc(sql: ^Streamql) -> Result {
 	if .Parse_Only in sql.config {
 		fmt.eprintf("LEAVE GROUP BY\n")
 		return .Ok
@@ -685,7 +685,7 @@ parse_leave_groupby :: proc(sql: ^Streamql) -> Result {
 	return .Ok
 }
 
-parse_send_distinct :: proc(sql: ^Streamql) -> Result {
+listener_send_distinct :: proc(sql: ^Streamql) -> Result {
 	if .Parse_Only in sql.config {
 		fmt.eprintf("SEND DISTINCT\n")
 		return .Ok
@@ -695,7 +695,7 @@ parse_send_distinct :: proc(sql: ^Streamql) -> Result {
 	return .Ok
 }
 
-parse_send_all :: proc(sql: ^Streamql) -> Result {
+listener_send_all :: proc(sql: ^Streamql) -> Result {
 	if .Parse_Only in sql.config {
 		fmt.eprintf("SEND ALL\n")
 		return .Ok
@@ -704,7 +704,7 @@ parse_send_all :: proc(sql: ^Streamql) -> Result {
 	return .Ok
 }
 
-parse_enter_top_expr :: proc(sql: ^Streamql) -> Result {
+listener_enter_top_expr :: proc(sql: ^Streamql) -> Result {
 	if .Parse_Only in sql.config {
 		fmt.eprintf("ENTER TOP EXPR\n")
 		return .Ok
@@ -715,7 +715,7 @@ parse_enter_top_expr :: proc(sql: ^Streamql) -> Result {
 	return .Ok
 }
 
-parse_leave_top_expr :: proc(sql: ^Streamql) -> Result {
+listener_leave_top_expr :: proc(sql: ^Streamql) -> Result {
 	if .Parse_Only in sql.config {
 		fmt.eprintf("LEAVE TOP EXPR\n")
 		return .Ok

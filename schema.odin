@@ -221,9 +221,9 @@ _evaluate_if_const :: proc(expr: ^Expression) -> Result {
 	new_data: Data
 	if expr.data_type == .String {
 		sb := strings.make_builder()
-		fn.call__(fn, &new_data, nil, &sb) or_return
+		new_data = fn.call__(fn, nil, &sb) or_return
 	} else {
-		fn.call__(fn, &new_data) or_return
+		new_data = fn.call__(fn) or_return
 	}
 	expr.data = Expr_Constant(new_data)
 

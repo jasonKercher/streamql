@@ -19,9 +19,9 @@ Function_Type :: enum {
 	Bit_Xor,
 
 	/* Unary */
+	Bit_Not_Unary,
 	Plus_Unary,
 	Minus_Unary,
-	Bit_Not_Unary,
 
 	/* Functions */
 	Abs,
@@ -64,7 +64,7 @@ Function_Type :: enum {
 	User_Name,
 }
 
-Function_Call :: proc(fn: ^Expr_Function, data: ^Data, recs: ^Record = nil, sb: ^strings.Builder = nil) -> Result
+Function_Call :: proc(fn: ^Expr_Function, recs: ^Record = nil, sb: ^strings.Builder = nil) -> (Data, Result)
 
 Expr_Function :: struct {
 	call__: Function_Call,
@@ -76,10 +76,24 @@ Expr_Function :: struct {
 }
 
 make_function :: proc(fn_type: Function_Type) -> Expr_Function {
-	return Expr_Function {
+	new_fn := (Expr_Function) {
 		type = fn_type,
 		data_type = .String,
 	}
+
+	if fn_type <= .Minus_Unary {
+		return new_fn
+	}
+
+	#partial switch fn_type {
+	case .Left:
+		new_fn.min_args = 2
+		new_fn.max_args = 2
+		new_fn.call__ = sql_left
+	case:
+	}
+
+	return new_fn
 }
 
 destroy_function :: proc(fn: ^Expr_Function) {
@@ -166,7 +180,7 @@ _scalar_ops : [OPERATOR_COUNT][DATA_TYPE_COUNT] Function_Call = {
         {sql_op_bit_and,       nil,                  nil},
         {sql_op_bit_xor,       nil,                  nil},
         {sql_op_bit_not,       nil,                  nil},
-        {sql_op_unary_minus_i, sql_op_unary_minus_f, nil},
         {sql_op_unary_plus_i,  sql_op_unary_plus_f,  nil},
+        {sql_op_unary_minus_i, sql_op_unary_minus_f, nil},
 }
 

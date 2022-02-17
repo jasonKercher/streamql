@@ -2,14 +2,18 @@ all: debug
 SRC = $(wildcard ./*.odin)
 
 clean:
-	-@rm -v streamql
+	-@rm -v sql streamql
 
 vet: $(SRC)
-	odin build ./ -out:streamql -debug -opt:0 -vet
+	odin build ./ -out:sql -debug -opt:0 -vet
 
 debug: $(SRC)
-	odin build ./ -out:streamql -opt:0 -debug
+	odin build ./ -out:sql -opt:0 -debug
 
 release: $(SRC)
-	odin build ./ -out:streamql -o:speed
+	odin build ./ -out:sql -o:speed
+
+
+check: $(SRC)
+	odin test ./ -opt:0 -debug
 
