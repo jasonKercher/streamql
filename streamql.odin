@@ -18,6 +18,7 @@ Config :: enum u8 {
 	Summarize,
 	Parse_Only,
 	Print_Plan,
+	Char_As_Byte,
 	Force_Cartesian,
 	Add_Header,
 	No_Header, /* lol? */

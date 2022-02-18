@@ -7,12 +7,6 @@ import "core:fmt"
 EPSILON :: f64(.0002)
 _sql: Streamql
 
-@private
-_init_sql :: proc() {
-	cfg: bit_set[Config] = {} // lol
-	construct(&_sql, cfg)
-}
-
 _check_val_float :: proc(t: ^testing.T, actual: f64, expected: f64, loc := #caller_location) {
 	diff := abs(actual - expected)
 	msg := fmt.tprintf("abs(%0.5f - %0.5f) = %0.5f", actual, expected, diff)
@@ -48,7 +42,7 @@ _check_constant :: proc(t: ^testing.T, query: string, expected: $T, loc := #call
 
 @test
 check_const_literals :: proc(t: ^testing.T) {
-	_init_sql()
+	construct(&_sql)
 	_check_constant(t, "select 1", i64(1))
 	_check_constant(t, "select 1.1", f64(1.1))
 	_check_constant(t, "select 'x''y'", "x'y")
@@ -65,9 +59,26 @@ check_const_literals :: proc(t: ^testing.T) {
 	_check_constant(t, "select +1.1", f64(1.1))
 	_check_constant(t, "select -(1 * 2)", i64(-2))
 	_check_constant(t, "select ~1", i64(-2))
+	destroy(&_sql)
+}
 
+@test
+check_const_functions :: proc(t: ^testing.T) {
+	construct(&_sql)
 	_check_constant(t, "select left('testing sql', 4)", "test")
+	_check_constant(t, "select left('αβΩ', 1)", "α")
+	_check_constant(t, "select right('testing sql', 4)", " sql")
+	_check_constant(t, "select right('αβΩ', 1)", "Ω")
+	destroy(&_sql)
+}
 
+@test
+check_const_functions_bytes :: proc(t: ^testing.T) {
+	construct(&_sql, {.Char_As_Byte})
+	_check_constant(t, "select left('testing sql', 4)", "test")
+	_check_constant(t, "select left('αβΩ', 2)", "α")
+	_check_constant(t, "select right('testing sql', 4)", " sql")
+	_check_constant(t, "select right('αβΩ', 2)", "Ω")
 	destroy(&_sql)
 }
 

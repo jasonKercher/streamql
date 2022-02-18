@@ -125,6 +125,7 @@ make_expression_agg :: proc(agg: Expr_Aggregate) -> Expression {
 make_expression_fn :: proc(fn: Expr_Function) -> Expression {
 	return Expression {
 		data = fn,
+		data_type = fn.data_type,
 		subq_idx = -1,
 	}
 }

@@ -3,6 +3,7 @@ package streamql
 
 import "core:fmt"
 import "core:strings"
+import "core:unicode/utf8"
 
 /** operations **/
 
@@ -34,6 +35,7 @@ overflow_safe_mult_i :: proc(n0, n1: i64) -> (i64, Result) {
 
 	return n0 * n1, .Ok
 }
+
 
 sql_op_plus_i :: proc(fn: ^Expr_Function, recs: ^Record = nil, _: ^strings.Builder = nil) -> (val: Data, res: Result) {
 	n0 := expression_get_int(&fn.args[0], recs) or_return
@@ -144,17 +146,72 @@ sql_op_unary_plus_f :: proc(fn: ^Expr_Function, recs: ^Record = nil, _: ^strings
 
 /** Named scalar functions **/
 
+
 sql_left :: proc(fn: ^Expr_Function, recs: ^Record = nil, sb: ^strings.Builder = nil) -> (val: Data, res: Result) {
 	s := expression_get_string(&fn.args[0], recs) or_return
-	n := expression_get_int(&fn.args[1], recs) or_return
-
-	for char, i in s {
-		if i >= int(n) {
-			break
+	n := _get_length(&fn.args[1], recs) or_return
+	
+	i: int
+	r: rune
+	rune_len: int
+	rune_qty: int
+	for ; i < len(s) && rune_qty < n; i += rune_len {
+		rune_qty += 1
+		r, rune_len = utf8.decode_rune_in_string(s[i:])
+		if r == utf8.RUNE_ERROR {
+			fmt.eprintf("invalid UTF-8 sequence `%s'\n", s)
+			return "", .Error
 		}
-		strings.write_encoded_rune(sb, char)
 	}
+	strings.write_string(sb, s[:i])
+	return strings.to_string(sb^), .Ok
+}
+
+sql_left_byte :: proc(fn: ^Expr_Function, recs: ^Record = nil, sb: ^strings.Builder = nil) -> (val: Data, res: Result) {
+	s := expression_get_string(&fn.args[0], recs) or_return
+	n := _get_length(&fn.args[1], recs) or_return
+
+	limit := min(len(s), int(n))
+	strings.write_string(sb, s[0:limit])
 	return strings.to_string(sb^), .Ok
 }
 
 
+sql_right :: proc(fn: ^Expr_Function, recs: ^Record = nil, sb: ^strings.Builder = nil) -> (val: Data, res: Result) {
+	s := expression_get_string(&fn.args[0], recs) or_return
+	n := _get_length(&fn.args[1], recs) or_return
+	
+	i := len(s)
+	r: rune
+	rune_len: int
+	rune_qty: int
+	for ; i >= 0 && rune_qty < n; i -= rune_len {
+		rune_qty += 1
+		r, rune_len = utf8.decode_last_rune_in_string(s[:i])
+		if r == utf8.RUNE_ERROR {
+			fmt.eprintf("invalid UTF-8 sequence `%s'\n", s)
+			return "", .Error
+		}
+	}
+	strings.write_string(sb, s[i:])
+	return strings.to_string(sb^), .Ok
+}
+
+sql_right_byte :: proc(fn: ^Expr_Function, recs: ^Record = nil, sb: ^strings.Builder = nil) -> (val: Data, res: Result) {
+	s := expression_get_string(&fn.args[0], recs) or_return
+	n := _get_length(&fn.args[1], recs) or_return
+
+	limit := min(len(s), int(n))
+	strings.write_string(sb, s[len(s) - limit:])
+	return strings.to_string(sb^), .Ok
+}
+
+@(private = "file")
+_get_length :: proc(expr: ^Expression, recs: ^Record) -> (length: int, res: Result) {
+	n := expression_get_int(expr, recs) or_return
+	if n < 0 {
+		fmt.eprintf("invalid length value `%d'\n", n)
+		return 0, .Error
+	}
+	return int(n), .Ok
+}

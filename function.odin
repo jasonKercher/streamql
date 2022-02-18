@@ -75,21 +75,23 @@ Expr_Function :: struct {
 	data_type: Data_Type,
 }
 
-make_function :: proc(fn_type: Function_Type) -> Expr_Function {
+make_function :: proc(fn_type: Function_Type, char_as_byte: bool) -> Expr_Function {
 	new_fn := (Expr_Function) {
 		type = fn_type,
 		data_type = .String,
 	}
 
-	if fn_type <= .Minus_Unary {
-		return new_fn
-	}
-
 	#partial switch fn_type {
-	case .Left:
+	case .Plus..=.Minus_Unary:
+		return new_fn
+	case .Right:
+		new_fn.call__ = char_as_byte ? sql_right_byte : sql_right
 		new_fn.min_args = 2
 		new_fn.max_args = 2
-		new_fn.call__ = sql_left
+	case .Left:
+		new_fn.call__ = char_as_byte ? sql_left_byte : sql_left
+		new_fn.min_args = 2
+		new_fn.max_args = 2
 	case:
 	}
 

@@ -291,7 +291,8 @@ listener_enter_function :: proc(sql: ^Streamql, tok: ^Token) -> Result {
 		fn_type = Function_Type(int(tok.type) - offset)
 	}
 
-	fn_expr := make_expression(make_function(fn_type))
+	char_as_byte := .Char_As_Byte in sql.config
+	fn_expr := make_expression(make_function(fn_type, char_as_byte))
 	expr_ptr := query_distribute_expression(_get_curr_query(sql), &fn_expr) or_return
 	q := _get_curr_query(sql)
 

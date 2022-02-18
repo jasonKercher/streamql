@@ -14,6 +14,7 @@ main :: proc()
 
 	getargs.add_arg(&a, "", "help", .None)
 	getargs.add_arg(&a, "", "api", .None)
+	getargs.add_arg(&a, "b", "char-as-byte", .None)
 	getargs.add_arg(&a, "c", "check", .None)
 	getargs.add_arg(&a, "h", "no-header", .None)
 	getargs.add_arg(&a, "H", "add-header", .None)
@@ -29,6 +30,9 @@ main :: proc()
 	}
 
 	cfg: bit_set[Config] = {}
+	if getargs.get_flag(&a, "char-as-byte") {
+		cfg += {.Char_As_Byte}
+	}
 	if getargs.get_flag(&a, "check") {
 		cfg += {.Check}
 	}
