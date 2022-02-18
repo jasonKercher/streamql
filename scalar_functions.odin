@@ -150,21 +150,8 @@ sql_op_unary_plus_f :: proc(fn: ^Expr_Function, recs: ^Record = nil, _: ^strings
 sql_left :: proc(fn: ^Expr_Function, recs: ^Record = nil, sb: ^strings.Builder = nil) -> (val: Data, res: Result) {
 	s := expression_get_string(&fn.args[0], recs) or_return
 	n := _get_length(&fn.args[1], recs) or_return
-	
-	i: int
-	r: rune
-	rune_len: int
-	rune_qty: int
-	for ; i < len(s) && rune_qty < n; i += rune_len {
-		rune_qty += 1
-		r, rune_len = utf8.decode_rune_in_string(s[i:])
-		if r == utf8.RUNE_ERROR {
-			fmt.eprintf("invalid UTF-8 sequence `%s'\n", s)
-			return "", .Error
-		}
-	}
-	strings.write_string(sb, s[:i])
-	return strings.to_string(sb^), .Ok
+
+	return _left(s, n, sb)
 }
 
 sql_left_byte :: proc(fn: ^Expr_Function, recs: ^Record = nil, sb: ^strings.Builder = nil) -> (val: Data, res: Result) {
@@ -175,7 +162,6 @@ sql_left_byte :: proc(fn: ^Expr_Function, recs: ^Record = nil, sb: ^strings.Buil
 	strings.write_string(sb, s[0:limit])
 	return strings.to_string(sb^), .Ok
 }
-
 
 sql_right :: proc(fn: ^Expr_Function, recs: ^Record = nil, sb: ^strings.Builder = nil) -> (val: Data, res: Result) {
 	s := expression_get_string(&fn.args[0], recs) or_return
@@ -206,6 +192,51 @@ sql_right_byte :: proc(fn: ^Expr_Function, recs: ^Record = nil, sb: ^strings.Bui
 	return strings.to_string(sb^), .Ok
 }
 
+sql_substring :: proc(fn: ^Expr_Function, recs: ^Record = nil, sb: ^strings.Builder = nil) -> (val: Data, res: Result) {
+	s := expression_get_string(&fn.args[0], recs) or_return
+	pos := expression_get_int(&fn.args[1], recs) or_return
+	n := _get_length(&fn.args[2], recs) or_return
+
+	pos -= 1
+
+	i: int
+	r: rune
+	rune_len: int
+	rune_qty: i64
+	for ; i < len(s) && rune_qty < pos; i += rune_len {
+		rune_qty += 1
+		r, rune_len = utf8.decode_rune_in_string(s[i:])
+		if r == utf8.RUNE_ERROR {
+			fmt.eprintf("invalid UTF-8 sequence `%s'\n", s)
+			return "", .Error
+		}
+	}
+
+	if pos < 0 {
+		n += int(pos)
+	}
+
+	return _left(s[i:], n, sb)
+}
+
+sql_substring_byte :: proc(fn: ^Expr_Function, recs: ^Record = nil, sb: ^strings.Builder = nil) -> (val: Data, res: Result) {
+	s := expression_get_string(&fn.args[0], recs) or_return
+	p := expression_get_int(&fn.args[1], recs) or_return
+	n := _get_length(&fn.args[2], recs) or_return
+
+	pos := int(p)
+
+	pos -= 1
+	if pos < 1 {
+		pos = 0
+		n += pos
+	}
+
+	n = min(n, len(s) - pos)
+	strings.write_string(sb, s[pos:pos+n])
+	return strings.to_string(sb^), .Ok
+}
+
 @(private = "file")
 _get_length :: proc(expr: ^Expression, recs: ^Record) -> (length: int, res: Result) {
 	n := expression_get_int(expr, recs) or_return
@@ -214,4 +245,22 @@ _get_length :: proc(expr: ^Expression, recs: ^Record) -> (length: int, res: Resu
 		return 0, .Error
 	}
 	return int(n), .Ok
+}
+
+@(private = "file")
+_left :: proc(s: string, n: int, sb: ^strings.Builder) -> (string, Result) {
+	i: int
+	r: rune
+	rune_len: int
+	rune_qty: int
+	for ; i < len(s) && rune_qty < n; i += rune_len {
+		rune_qty += 1
+		r, rune_len = utf8.decode_rune_in_string(s[i:])
+		if r == utf8.RUNE_ERROR {
+			fmt.eprintf("invalid UTF-8 sequence `%s'\n", s)
+			return "", .Error
+		}
+	}
+	strings.write_string(sb, s[:i])
+	return strings.to_string(sb^), .Ok
 }

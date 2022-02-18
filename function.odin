@@ -92,6 +92,10 @@ make_function :: proc(fn_type: Function_Type, char_as_byte: bool) -> Expr_Functi
 		new_fn.call__ = char_as_byte ? sql_left_byte : sql_left
 		new_fn.min_args = 2
 		new_fn.max_args = 2
+	case .Substring:
+		new_fn.call__ = char_as_byte ? sql_substring_byte : sql_substring
+		new_fn.min_args = 3
+		new_fn.max_args = 3
 	case:
 	}
 
