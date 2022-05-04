@@ -2,14 +2,13 @@ package streamql
 
 import "core:fmt"
 import "core:os"
+import "core:os/os2"
 import "getargs"
 import "util"
 
-import "../heap"
-
 main :: proc()
 {
-	context.allocator = heap.heap_allocator()
+	context.allocator = os2.heap_allocator()
 	query_str : string
 
 	a := getargs.make_getargs()
