@@ -5,8 +5,11 @@ import "core:os"
 import "getargs"
 import "util"
 
+import "../heap"
+
 main :: proc()
 {
+	context.allocator = heap.heap_allocator()
 	query_str : string
 
 	a := getargs.make_getargs()

@@ -236,7 +236,7 @@ lex_lex :: proc (p: ^Parser) -> Result {
 
 	resize(&p.tokens, 0)
 	resize(&p.lf_vec, 0)
-	bit_array.clear(&p.consumed)
+	bit_array.clear(p.consumed)
 
 	return _lex_tokenize(p)
 }
@@ -701,7 +701,7 @@ _lex_tokenize :: proc(p: ^Parser) -> Result {
 			_get_variable(p, group, &i)
 		case p.text[i] == '(':
 			group += 1
-			bit_array.set(&p.consumed, len(p.tokens))
+			bit_array.set(p.consumed, len(p.tokens))
 			append(&group_stack, group)
 			append(&p.tokens, Token {type=.Sym_Lparen, group=u16(group), begin=i, len=1})
 			i += 1
@@ -709,7 +709,7 @@ _lex_tokenize :: proc(p: ^Parser) -> Result {
 			if len(group_stack) == 1 {
 				return lex_error(p, i, "unmatched ')'")
 			}
-			bit_array.set(&p.consumed, len(p.tokens))
+			bit_array.set(p.consumed, len(p.tokens))
 			append(&p.tokens, Token {type=.Sym_Rparen, group=u16(group), begin=i, len=1})
 			i += 1
 			pop(&group_stack)
