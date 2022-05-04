@@ -1,0 +1,18 @@
+[submodule "getargs"]
+	path = getargs
+	url = https://github.com/jasonKercher/getargs.git
+[submodule "linkedlist"]
+	path = linkedlist
+	url = https://github.com/jasonKercher/linkedlist.git
+[submodule "bytemap"]
+	path = bytemap
+	url = https://github.com/jasonKercher/bytemap.git
+[submodule "fastrecs"]
+	path = fastrecs
+	url = https://github.com/jasonKercher/fastrecs.git
+[submodule "fifo"]
+	path = fifo
+	url = https://github.com/jasonKercher/fifo.git
+[submodule "bigraph"]
+	path = bigraph
+	url = https://github.com/jasonKercher/bigraph.git
